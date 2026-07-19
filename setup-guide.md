@@ -100,4 +100,8 @@ Any of: PlatformIO's built-in monitor, `screen`, PuTTY, or the [Serial Studio](h
 | LEDs | `LED_GREEN`, `LED_BLUE` |
 | USB | USB-C, CDC serial + DFU |
 
-Assembly: modules key onto the board — align the connector and the mounting-screw hole; never force. Power off (unplug USB) before adding/removing modules.
+### Assembly 
+Power off (unplug USB) before adding/removing modules.
+The sensor modules key onto the board — align the connectors and the mounting-screw hole, press gently untill the modules click into place - never force. 
+
+<img src="/img/AssembledBoard.png" alt="Assemble PCB with sensors mounted" style="height: 100px; width:200px;"/>
