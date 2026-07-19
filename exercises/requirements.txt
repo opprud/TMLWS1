@@ -22,7 +22,7 @@ scikit-learn
 # --- sklearn -> C model export (M6, M7, M9) --------------------------------
 # Pin to 0.21.x: the generated C symbol names / API are what the firmware
 # and worksheets assume (see project VERIFY notes).
-emlearn==0.21.*
+#emlearn==0.21.*
 
 # --- Deep learning (M1, M7, M8) --------------------------------------------
 tensorflow
@@ -39,3 +39,4 @@ pyserial                    # imported as `serial`
 
 # --- Notebook environment (local runs; not needed on Colab) ----------------
 jupyterlab
+certifi                     # CA bundle for HTTPS dataset downloads (see M1 README: macOS SSL fix)

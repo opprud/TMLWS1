@@ -40,7 +40,8 @@ In Module 3 you will record your own CSVs — bookmark this section and repeat i
    - How many bins do you need before the shape is visible?
    - Is the data Gaussian, or something else? Why might a gesture *not* be Gaussian?
 
-**Expected output (rest recording):** `describe()` shows means near `(0, 0, 9.8)` and std well below 1 m/s²; the plot is three nearly flat lines.
+**Expected output (circle recording):** 
+**Expected output (idle recording):** `describe()` shows means near `(0, 0, 9.8)` and std well below 1 m/s²; the plot is three nearly flat lines.
 
 ---
 
@@ -151,6 +152,7 @@ CIFAR-10: 60,000 **colour** images, 32×32 px, 10 classes (airplane, car, bird, 
 | Colab session reset, lost variables | Runtime → Run all — notebooks are built to re-run top to bottom |
 | Local: `No module named tensorflow` | activate the env: `source ~/tinyml-env/bin/activate`; TF missing? `pip install tensorflow` |
 | Local: TF install too heavy / fails | just use Colab — that's why it's the default here |
-| `fetch_california_housing` download error | corporate proxy/firewall — run that exercise in Colab |
+| `fetch_california_housing` fails with `CERTIFICATE_VERIFY_FAILED` | macOS python.org build has no default CA bundle. The notebook's cert-fix cell (points Python at `certifi`) handles it; if running your own script, either run **`/Applications/Python 3.11/Install Certificates.command`** once, or `export SSL_CERT_FILE=$(python -c "import certifi;print(certifi.where())")`. |
+| `fetch_california_housing` download error (other) | corporate proxy/firewall — run that exercise in Colab |
 | Training absurdly slow on CIFAR | enable the GPU runtime (see Exercise 4), or reduce epochs |
 | External Colab link dead (UNIFEI repo) | mirrored copies: ask instructor / check the course repo `notebooks/` folder |
