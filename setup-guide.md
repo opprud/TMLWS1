@@ -57,7 +57,7 @@ void loop()  { digitalWrite(LED_GREEN, !digitalRead(LED_GREEN)); delay(500); }
    ```
 4. Verify: `edge-impulse-data-forwarder --version`.
 
-We use the **data forwarder** (streams sensor CSV from the board's serial port into your EI project) and the **uploader** (`edge-impulse-uploader` for WAV files). There is no official EI firmware for the RAK4631 — we write our own forwarder sketches in Module 3; that's a feature of the course, not a bug.
+We use the **data forwarder** (streams sensor CSV from the board's serial port into your EI project) and the **uploader** (`edge-impulse-uploader` for WAV files). There is no official EI firmware for the RAK4631 — we write our own forwarder sketches in Module 3; that's a feature of the course, not a bug :-).
 
 ## 4. Python environment
 
@@ -100,4 +100,8 @@ Any of: PlatformIO's built-in monitor, `screen`, PuTTY, or the [Serial Studio](h
 | LEDs | `LED_GREEN`, `LED_BLUE` |
 | USB | USB-C, CDC serial + DFU |
 
-Assembly: modules key onto the board — align the connector and the mounting-screw hole; never force. Power off (unplug USB) before adding/removing modules.
+### Assembly 
+Power off (unplug USB) before adding/removing modules.
+The sensor modules key onto the board — align the connectors and the mounting-screw hole, press gently untill the modules click into place - never force. 
+
+<img src="/img/AssembledBoard.png" alt="Assemble PCB with sensors mounted" style="height: 100px; width:200px;"/>
