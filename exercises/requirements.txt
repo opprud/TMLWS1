@@ -1,0 +1,41 @@
+# TinyML Workshop — Python dependencies for the exercise notebooks & scripts
+#
+# Install into a fresh virtual environment (see ../setup-guide.md §4):
+#     python3 -m venv ~/tinyml-env
+#     source ~/tinyml-env/bin/activate      # Windows: ~/tinyml-env/Scripts/activate
+#     pip install -r requirements.txt
+#
+# Most notebooks also run as-is on Google Colab (nothing to install there).
+# Versions are intentionally left open except where a known constraint applies
+# (see notes below); pin them after a full validated notebook run.
+
+# --- Core scientific stack (all modules) -----------------------------------
+numpy
+pandas
+scipy                       # scipy.signal.find_peaks (M5), scipy.stats (M8)
+matplotlib
+seaborn                     # anomaly-detection plots (M8)
+
+# --- Classical ML (M1, M6, M7, M8) -----------------------------------------
+scikit-learn
+
+# --- sklearn -> C model export (M6, M7, M9) --------------------------------
+# Pin to 0.21.x: the generated C symbol names / API are what the firmware
+# and worksheets assume (see project VERIFY notes).
+emlearn==0.21.*
+
+# --- Deep learning (M1, M7, M8) --------------------------------------------
+tensorflow
+
+# --- Model optimisation: quantisation & pruning (M9) -----------------------
+# tensorflow-model-optimization (tfmot) requires the standalone Keras 2 package
+# on TensorFlow >= 2.16. The pruning notebook sets TF_USE_LEGACY_KERAS=1 and
+# imports tf_keras accordingly.
+tensorflow-model-optimization
+tf-keras
+
+# --- Device serial I/O (M5 feature validation harness) ---------------------
+pyserial                    # imported as `serial`
+
+# --- Notebook environment (local runs; not needed on Colab) ----------------
+jupyterlab
