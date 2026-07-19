@@ -57,7 +57,7 @@ void loop()  { digitalWrite(LED_GREEN, !digitalRead(LED_GREEN)); delay(500); }
    ```
 4. Verify: `edge-impulse-data-forwarder --version`.
 
-We use the **data forwarder** (streams sensor CSV from the board's serial port into your EI project) and the **uploader** (`edge-impulse-uploader` for WAV files). There is no official EI firmware for the RAK4631 — we write our own forwarder sketches in Module 3; that's a feature of the course, not a bug.
+We use the **data forwarder** (streams sensor CSV from the board's serial port into your EI project) and the **uploader** (`edge-impulse-uploader` for WAV files). There is no official EI firmware for the RAK4631 — we write our own forwarder sketches in Module 3; that's a feature of the course, not a bug :-).
 
 ## 4. Python environment
 
