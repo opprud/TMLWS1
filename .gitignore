@@ -1,0 +1,62 @@
+# ==========================================================================
+#  TMLWS1 — public course repo. This .gitignore keeps internal, client-named,
+#  and permission-bound material OUT of the public history. These files stay
+#  on the instructor's disk (authoring source) but are never committed.
+#  Before every `git add`, sanity-check with:  git status --porcelain
+# ==========================================================================
+
+# --- Internal working / planning docs (client name, review notes) ---------
+/CLAUDE.md
+/course-plan.md
+/content-inventory.md
+/augmentation-geron.md
+/augmentation-reddi.md
+/review-pedagogy.md
+/review-technical.md
+/TODOs_MOJ.md
+
+# --- Permission-bound HarvardX / edX (Reddi) material — NEVER distribute ---
+/reddi-slides.zip
+/reddi-index.tsv
+/.reddi-tmp/
+decks/assets/reddi/
+
+# --- Old Brightspace / Particle-era source export (not for distribution) ---
+/brightspace-export/
+
+# --- Rendered slide binaries (rebuildable from Marp sources) ----------------
+decks/rendered/
+*.pptx
+
+# --- PlatformIO / build artifacts ------------------------------------------
+.pio/
+.pioenvs/
+.piolibdeps/
+*.elf
+*.hex
+*.bin
+*.o
+*.a
+
+# --- Python -----------------------------------------------------------------
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+.ipynb_checkpoints/
+*.egg-info/
+
+# --- Notebook / model / captured-data artifacts (regenerated in labs) -------
+*.h5
+*.tflite
+*.pkl
+*.npy
+*.npz
+
+# --- Editor / OS junk -------------------------------------------------------
+.DS_Store
+.vscode/
+.idea/
+*.swp
+Thumbs.db

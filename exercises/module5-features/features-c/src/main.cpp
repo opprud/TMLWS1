@@ -1,0 +1,150 @@
+// Module 5 Track B — compute features on-device and print them for validation.
+//
+// Modes (single character over the serial monitor):
+//   g  (default, auto-repeats every 5 s)  — features on the deterministic
+//        SYNTHETIC golden window. validate_features.py generates the identical
+//        window in numpy and compares the numbers.
+//   l  — capture a LIVE 256-sample window from the RAK1904 (LIS3DH, slot A,
+//        I2C 0x18) at 100 Hz and print its features.
+//
+// To use a golden window exported from notebook 02 instead of the synthetic one:
+//   1) run notebook 02 section 8 — it writes include/golden/win_<label>.h
+//      (and a .csv twin for the Python side) directly into this project.
+//   2) #include it below and point GOLDEN_WINDOW / GOLDEN_LEN at the array.
+
+#include <Arduino.h>
+#include <Adafruit_LIS3DH.h>
+#include <Adafruit_Sensor.h>
+#include "features.h"
+
+// ---- configuration ---------------------------------------------------------
+static const float FS = 100.0f;          // Hz — matches Module 4 recordings
+static const int N = FEAT_FFT_N;         // 256 samples = 2.56 s @ 100 Hz
+
+// Synthetic golden window — MUST match validate_features.py exactly:
+//   x[i] = 0.8*sin(2*pi*25*i/fs) + 0.3*sin(2*pi*40*i/fs) + 0.05*sin(2*pi*3.1*i/fs + 1.0)
+static void make_synthetic_window(float *x, int n, float fs)
+{
+    const float two_pi = 2.0f * (float)M_PI;
+    for (int i = 0; i < n; i++) {
+        const float t = (float)i / fs;
+        x[i] = 0.8f * sinf(two_pi * 25.0f * t)
+             + 0.3f * sinf(two_pi * 40.0f * t)
+             + 0.05f * sinf(two_pi * 3.1f * t + 1.0f);
+    }
+}
+
+// Uncomment to run on a window exported from your own fan data
+// (notebook 02, section 8 — README A2 step 7):
+// #include "golden/win_normal.h"
+// #define GOLDEN_WINDOW win_normal
+// #define GOLDEN_LEN    WIN_NORMAL_LEN
+
+// ---- globals ----------------------------------------------------------------
+static float window_buf[FEAT_FFT_N];
+static Adafruit_LIS3DH lis;
+static bool lis_ok = false;
+static char linebuf[160];
+
+static void print_features(const char *window_name)
+{
+    time_features_t tf;
+    float bands[FEAT_N_BANDS];
+
+    uint32_t t0 = micros();
+    time_features_compute(window_buf, N, &tf);
+    uint32_t stats_us = micros() - t0;
+
+    t0 = micros();
+    int rc = band_energies_compute(window_buf, N, FS, bands, FEAT_N_BANDS);
+    uint32_t fft_us = micros() - t0;
+
+    Serial.println("FEATURES_BEGIN");
+    snprintf(linebuf, sizeof(linebuf), "window=%s n=%d fs=%.1f", window_name, N, (double)FS);
+    Serial.println(linebuf);
+    snprintf(linebuf, sizeof(linebuf),
+             "axis=x mean=%.6f std=%.6f rms=%.6f min=%.6f max=%.6f zc=%d",
+             (double)tf.mean, (double)tf.std, (double)tf.rms,
+             (double)tf.min, (double)tf.max, tf.zero_crossings);
+    Serial.println(linebuf);
+    if (rc == 0) {
+        snprintf(linebuf, sizeof(linebuf),
+                 "axis=x band0=%.6e band1=%.6e band2=%.6e band3=%.6e band4=%.6e",
+                 (double)bands[0], (double)bands[1], (double)bands[2],
+                 (double)bands[3], (double)bands[4]);
+        Serial.println(linebuf);
+    } else {
+        Serial.println("axis=x bands=ERROR");
+    }
+    snprintf(linebuf, sizeof(linebuf), "timing stats_us=%lu fft_us=%lu",
+             (unsigned long)stats_us, (unsigned long)fft_us);
+    Serial.println(linebuf);
+    Serial.println("FEATURES_END");
+}
+
+// Capture N samples of one axis (X) at FS from the LIS3DH.
+// Simple polled pacing — good enough for a feature demo; the Module 3
+// forwarder firmware shows the timer-driven pattern for production sampling.
+static bool capture_live_window(void)
+{
+    if (!lis_ok) return false;
+    const uint32_t period_us = (uint32_t)(1000000.0f / FS);
+    uint32_t next = micros();
+    for (int i = 0; i < N; i++) {
+        while ((int32_t)(micros() - next) < 0) { /* wait */ }
+        next += period_us;
+        sensors_event_t event;
+        lis.getEvent(&event);
+        window_buf[i] = event.acceleration.x;   // m/s^2; pick your liveliest axis
+    }
+    return true;
+}
+
+void setup()
+{
+    // --- WisBlock ritual: power the sensor-slot 3V3_S rail. Do not delete. ---
+    pinMode(WB_IO2, OUTPUT);
+    digitalWrite(WB_IO2, HIGH);
+    delay(100);                               // give the sensor time to boot
+
+    Serial.begin(115200);
+    uint32_t t0 = millis();
+    while (!Serial && millis() - t0 < 5000) { delay(10); }   // wait max 5 s for monitor
+
+    lis_ok = lis.begin(0x18);                 // RAK1904 in sensor slot A
+    if (lis_ok) {
+        lis.setRange(LIS3DH_RANGE_4_G);       // +/-4 g, as in Module 4
+        lis.setDataRate(LIS3DH_DATARATE_100_HZ);
+        Serial.println("# LIS3DH ready (0x18, +/-4g, 100 Hz)");
+    } else {
+        Serial.println("# LIS3DH not found — live mode 'l' disabled, golden mode works");
+    }
+    Serial.println("# commands: g = golden synthetic window, l = live capture");
+}
+
+void loop()
+{
+    static uint32_t last = 0;
+    char cmd = 0;
+
+    if (Serial.available()) cmd = (char)Serial.read();
+
+    if (cmd == 'l') {
+        Serial.println("# capturing 256 live samples...");
+        if (capture_live_window()) {
+            print_features("live");
+        } else {
+            Serial.println("# live capture unavailable (no sensor)");
+        }
+        last = millis();
+    } else if (cmd == 'g' || millis() - last > 5000) {
+#ifdef GOLDEN_WINDOW
+        memcpy(window_buf, GOLDEN_WINDOW, sizeof(float) * N);
+        print_features("golden_file");
+#else
+        make_synthetic_window(window_buf, N, FS);
+        print_features("synthetic");
+#endif
+        last = millis();
+    }
+}
