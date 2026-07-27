@@ -15,6 +15,10 @@ Three PlatformIO projects, **in this order** — each one isolates a different f
 - RAK1904 accelerometer in **sensor slot A**, screwed down
 - RAK18000 microphone in the **IO slot**, screwed down
 
+**Documentation:**
+- [RAK4631 CPU & LoRa module](https://docs.rakwireless.com/product-categories/wisblock/rak4631/overview)
+- [RAK1904 Accelerometer](https://docs.rakwireless.com/product-categories/wisblock/rak1904/overview)
+- [RAK18000 microphone](https://docs.rakwireless.com/product-categories/wisblock/rak18000/overview)
 ---
 
 ## Exercise 1 — Blink & serial hello (`blink/`)
