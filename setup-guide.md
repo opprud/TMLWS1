@@ -102,6 +102,7 @@ Any of: PlatformIO's built-in monitor, `screen`, PuTTY, or the [Serial Studio](h
 
 ### Assembly 
 Power off (unplug USB) before adding/removing modules.
+
 The sensor modules key onto the board — align the connectors and the mounting-screw hole, press gently untill the modules click into place - never force. 
 
-<img src="/img/AssembledBoard.png" alt="Assemble PCB with sensors mounted" style="height: 100px; width:200px;"/>
+<img src="/exercises/module2-hardware-bringup/img/AssembledBoard.png" alt="Assemble PCB with sensors mounted" style="height: 200px; width:400px;"/>
