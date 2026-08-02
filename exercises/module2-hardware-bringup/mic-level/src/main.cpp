@@ -4,40 +4,48 @@
  *   PDM DATA = WB_IO3, PDM CLK = WB_IO4
  *
  * The nRF52840 PDM peripheral demodulates the 1-bit mic stream in hardware
- * and DMAs finished int16 PCM samples into RAM (EasyDMA). We double-buffer:
- * while the peripheral fills one buffer, the CPU measures the other.
+ * and DMAs finished int16 PCM samples into RAM (EasyDMA). The Adafruit BSP
+ * ships an Arduino-style `PDM` library that double-buffers for us: the
+ * peripheral fills one half while we read the other.
+ *
+ * NOTE: the Adafruit nRF52 BSP does NOT ship the raw nrfx PDM *driver*
+ * (nrfx_pdm.c is absent — only the header is there), so nrfx_pdm_init()/
+ * nrfx_pdm_start() would fail to link, and NRFX_PDM_DEFAULT_CONFIG references
+ * an undefined NRFX_PDM_DEFAULT_CONFIG_IRQ_PRIORITY (PDM is not enabled in the
+ * BSP's nrfx_config.h). We use the supported `PDM` Arduino library instead.
  *
  * Output: an RMS level + bargraph every ~100 ms. Yell at your board.
+  * @note RAK4631 GPIO mapping to nRF52840 GPIO ports
+   RAK4631    <->  nRF52840
+   WB_IO1     <->  P0.17 (GPIO 17)
+   WB_IO2     <->  P1.02 (GPIO 34)
+   WB_IO3     <->  P0.21 (GPIO 21)
+   WB_IO4     <->  P0.04 (GPIO 4)
+   WB_IO5     <->  P0.09 (GPIO 9)
+   WB_IO6     <->  P0.10 (GPIO 10)
+   WB_SW1     <->  P0.01 (GPIO 1)
+   WB_A0      <->  P0.05/AIN3 (AnalogIn A3)
+   WB_A1      <->  P0.31/AIN7 (AnalogIn A7)
  */
 
 #include <Arduino.h>
-#include <nrfx_pdm.h>
+#include <PDM.h>
 
 // ---------------------------------------------------------------- config ---
-#define PDM_BUFFER_SAMPLES 256 // samples per DMA buffer (16 ms @ 16 kHz)
+#define PDM_BUFFER_BYTES 512 // 256 int16 samples per half-buffer (16 ms @ 16 kHz)
 
-// Double buffers: the PDM peripheral writes one while we read the other.
-static int16_t pdmBuffer[2][PDM_BUFFER_SAMPLES];
-static volatile int nextBufferIndex = 0;
-
-// Handshake between the PDM IRQ and loop(): pointer to a freshly filled buffer.
-static int16_t *volatile releasedBuffer = nullptr;
+// Landing zone for one drained buffer. The PDM IRQ fills the library's own
+// double buffer; onPDMdata() copies the finished half here for loop() to chew.
+static int16_t sampleBuffer[PDM_BUFFER_BYTES / sizeof(int16_t)];
+static volatile int samplesRead = 0; // >0 => a fresh block is waiting for loop()
 
 // ------------------------------------------------------------ PDM handler ---
-// Called from interrupt context by the nrfx PDM driver.
-static void pdm_handler(nrfx_pdm_evt_t const *p_evt)
+// Called from interrupt context by the PDM library when a buffer fills.
+static void onPDMdata()
 {
-  if (p_evt->error != NRFX_PDM_NO_ERROR) {
-    return; // overflow — loop() was too slow; sample dropped
-  }
-  if (p_evt->buffer_requested) {
-    // Peripheral wants its next buffer: hand it the other half.
-    nrfx_pdm_buffer_set(pdmBuffer[nextBufferIndex], PDM_BUFFER_SAMPLES);
-    nextBufferIndex ^= 1;
-  }
-  if (p_evt->buffer_released != nullptr) {
-    releasedBuffer = (int16_t *)p_evt->buffer_released; // full buffer for loop()
-  }
+  int bytesAvailable = PDM.available();
+  PDM.read(sampleBuffer, bytesAvailable);
+  samplesRead = bytesAvailable / sizeof(int16_t);
 }
 
 // ---------------------------------------------------------------- setup ----
@@ -51,26 +59,23 @@ void setup()
 
   pinMode(LED_BLUE, OUTPUT); // error blink below + your clap light (TODO 3)
 
-  // PDM config: CLK = WB_IO4, DIN (DATA) = WB_IO3
-  nrfx_pdm_config_t cfg = NRFX_PDM_DEFAULT_CONFIG(WB_IO4 /*CLK*/, WB_IO3 /*DIN*/);
+  // PDM pins: DATA (DIN) = WB_IO3, CLK = WB_IO4. Third arg is a mic power-gate
+  // pin; the RAK18000 is always powered from the IO slot, so pass -1 (none).
+  PDM.setPins(WB_IO3 /*data*/, WB_IO4 /*clk*/, -1 /*pwr*/);
+  PDM.setBufferSize(PDM_BUFFER_BYTES);
 
-#if defined(PDM_RATIO_RATIO_Ratio80)
-  cfg.clock_freq = NRF_PDM_FREQ_1280K; // 1.28 MHz / 80 = 16.000 kHz
-  cfg.ratio      = NRF_PDM_RATIO_80;   // VERIFY: .ratio exists in the BSP's nrfx version
-#else
-  cfg.clock_freq = NRF_PDM_FREQ_1032K; // fixed ratio 64 -> ~16.125 kHz (close enough)
-#endif
-  cfg.mode   = NRF_PDM_MODE_MONO;
-  cfg.edge   = NRF_PDM_EDGE_LEFTRISING;
-  cfg.gain_l = 40; // 0..80, 40 = 0 dB-ish default; raise if too quiet
+  // Register the drain callback BEFORE begin() so no block is missed.
+  PDM.onReceive(onPDMdata);
 
-  nrfx_err_t err = nrfx_pdm_init(&cfg, pdm_handler);
-  if (err != NRFX_SUCCESS) {
-    Serial.println("ERROR: nrfx_pdm_init failed — is the RAK18000 in the IO slot?");
+  // 1 channel (mono), 16 kHz. begin() resets the gain to its default, so any
+  // setGain() must come AFTER begin(). Returns 0 on failure.
+  if (!PDM.begin(1 /*mono*/, 16000)) {
+    Serial.println("ERROR: PDM.begin failed — is the RAK18000 in the IO slot?");
     while (1) { digitalWrite(LED_BLUE, !digitalRead(LED_BLUE)); delay(100); }
   }
 
-  nrfx_pdm_start(); // fires buffer_requested; DMA begins
+  PDM.setGain(40); // 0..80, 40 = 0 dB-ish default; raise if too quiet
+
   Serial.println("Sampling at 16 kHz. Make some noise...");
 }
 
@@ -80,14 +85,14 @@ void loop()
   static uint64_t sumSquares = 0;
   static uint32_t sampleCount = 0;
 
-  if (releasedBuffer != nullptr) {
-    int16_t *buf = (int16_t *)releasedBuffer;
-    releasedBuffer = nullptr;
+  if (samplesRead > 0) {
+    int n = samplesRead;
+    samplesRead = 0; // release the landing zone for the next IRQ
 
-    for (int i = 0; i < PDM_BUFFER_SAMPLES; i++) {
-      sumSquares += (int32_t)buf[i] * buf[i];
+    for (int i = 0; i < n; i++) {
+      sumSquares += (int32_t)sampleBuffer[i] * sampleBuffer[i];
     }
-    sampleCount += PDM_BUFFER_SAMPLES;
+    sampleCount += n;
   }
 
   // Every ~100 ms of audio (1600 samples), report RMS + bargraph
@@ -113,6 +118,6 @@ void loop()
     // TODO(student) 3: light LED_BLUE when RMS exceeds a threshold you pick.
     //                  You just built a clap-activated light.
 
-    // TODO(student) 4 (bonus): try cfg.gain_l = 60 and re-flash. What changed?
+    // TODO(student) 4 (bonus): try PDM.setGain(60) and re-flash. What changed?
   }
 }
