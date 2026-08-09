@@ -95,12 +95,15 @@ deviations:            <anything you changed mid-session>
 ## 6. Sanity check with the feature explorer
 
 1. **Create impulse**: window size `2000` ms, window increase `1000` ms (50 % overlap) → add **Spectral Analysis** block (defaults) → add any learning block (we won't train it yet) → Save.
-2. **Spectral features** page → *Generate features*.
+2. **Spectral features** page → FFT Bins, change to 64 → Save Parameters → *Generate features*.
 3. Inspect the **feature explorer** (3-D projection of all windows):
    - `off` should sit far from everything.
    - `scrape` and `imbalance` should form their own regions.
    - `blocked` vs `normal` may overlap somewhat — that is expected at 100 Hz and is exactly what Module 5's spectral features attack. But if they are *identical*, strengthen the blockage now.
 4. Click outlier points — the explorer shows which recording/window they came from. Investigate: mislabelled? mount shifted? Delete or re-record bad files.
+5. On teh **Spectral features** page → FFT Bins, change to 256 → Save Parameters in new impulse→ *Generate features*.
+6. Explore using the feature explorer again, is calss separation better ?
+
 
 **Expected output:** 5 visually distinguishable groupings, ≥ 50 windows per class in training, ~10+ per class in test.
 
@@ -118,7 +121,7 @@ Tick every box before lunch — Modules 5/7/8 assume all of these:
 - [ ] States were recorded **interleaved**, not in blocks
 - [ ] Something legitimate varied between same-state repetitions
 - [ ] Sensor rigidly mounted; mounting unchanged for the whole session
-- [ ] Forwarder frequency ≈ 100 Hz on every recording
+- [ ] Forwarder frequency ≈ 250 Hz on every recording
 - [ ] Axes named `accX, accY, accZ`
 - [ ] Labels exactly: `normal`, `imbalance`, `blocked`, `scrape`, `off`
 - [ ] Train/test split done **by recording**, ~80/20, every class present in test
