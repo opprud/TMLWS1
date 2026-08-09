@@ -12,8 +12,8 @@ Capture the serial monitor output to a file (e.g. copy-paste from the
 PlatformIO monitor, or `pio device monitor | tee capture.txt`), then:
 
     python3 pcm_to_wav.py capture.txt fan_normal.01.wav
-    python3 pcm_to_wav.py capture.txt out.wav --rate 16125   # fallback clock
-    python3 pcm_to_wav.py capture.txt --play                 # quick listen (macOS)
+    python3 pcm_to_wav.py capture.txt out.wav --rate 16000    # force a rate
+    python3 pcm_to_wav.py capture.txt --play                  # quick listen (macOS)
 
 The sample rate is read from the BEGIN marker when present; --rate overrides.
 Then upload to Edge Impulse (filename before the first '.' becomes the label):

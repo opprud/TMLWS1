@@ -5,50 +5,55 @@
  *
  * Flow:
  *   1. Send 'r' in the serial monitor  -> records RECORD_SECONDS of
- *      16 kHz / 16-bit mono PCM straight into a RAM buffer (EasyDMA).
+ *      16 kHz / 16-bit mono PCM straight into a RAM buffer.
  *   2. The recording is dumped as base64 between BEGIN/END markers.
  *   3. On the PC: save the monitor output to a file and run
  *         python3 pcm_to_wav.py capture.txt fan_normal.01.wav
  *      then upload with edge-impulse-uploader.
+ *
+ * We use the Adafruit BSP's bundled `PDM` Arduino library (<PDM.h>). Its 16 kHz
+ * mode runs the peripheral at ratio 80 -> exactly 16.000 kHz. The library owns
+ * a small double buffer and hands us finished chunks in the onReceive callback;
+ * we copy each chunk into the big recordBuffer until it is full.
+ * (The raw nrfx PDM driver, nrfx_pdm.c, is NOT shipped by this BSP — only its
+ * header — so nrfx_pdm_init()/NRFX_PDM_DEFAULT_CONFIG do not build/link.)
  *
  * RAM budget: 2 s * 16000 Hz * 2 B = 64000 B ≈ 62 kB of the nRF52840's 256 kB.
  * ~5 s is the practical ceiling — try it (TODO 3) and meet the linker.
  */
 
 #include <Arduino.h>
-#include <nrfx_pdm.h>
+#include <PDM.h>
 
 // ---------------------------------------------------------------- config ---
 #define SAMPLE_RATE_HZ   16000
-#define RECORD_SECONDS   2
+#define RECORD_SECONDS   2 
 #define RECORD_SAMPLES   (SAMPLE_RATE_HZ * RECORD_SECONDS)
-#define PDM_CHUNK        256 // samples per DMA transfer
+#define PDM_CHUNK_BYTES  512 // library double-buffer half: 256 samples per drain
 
 // The big one: the whole recording lives here (~62 kB at 2 s).
 static int16_t recordBuffer[RECORD_SAMPLES];
-static volatile uint32_t samplesWritten = 0; // filled by the PDM IRQ
+static volatile uint32_t samplesWritten = 0; // filled by the PDM callback
 static volatile bool recording = false;
 static volatile bool recordingDone = false;
 
 // ------------------------------------------------------------ PDM handler ---
-// DMA writes directly into recordBuffer, chunk by chunk — no copying.
-static void pdm_handler(nrfx_pdm_evt_t const *p_evt)
+// Called from interrupt context when the library has a fresh chunk. We drain it
+// straight into recordBuffer until the recording is full, then flag loop().
+static void onPDMdata()
 {
-  if (p_evt->error != NRFX_PDM_NO_ERROR) {
-    return;
-  }
-  if (p_evt->buffer_requested) {
-    uint32_t remaining = RECORD_SAMPLES - samplesWritten;
-    if (recording && remaining > 0) {
-      uint16_t n = (remaining < PDM_CHUNK) ? remaining : PDM_CHUNK;
-      nrfx_pdm_buffer_set(&recordBuffer[samplesWritten], n);
-      samplesWritten += n;
-    } else {
-      // Buffer full: stop the peripheral, signal loop().
-      nrfx_pdm_stop();
-      recording = false;
-      recordingDone = true;
-    }
+  if (!recording) return;
+
+  uint32_t remaining = RECORD_SAMPLES - samplesWritten;
+  uint32_t avail = (uint32_t)PDM.available() / sizeof(int16_t);
+  uint32_t n = (avail < remaining) ? avail : remaining;
+
+  PDM.read(&recordBuffer[samplesWritten], n * sizeof(int16_t));
+  samplesWritten += n;
+
+  if (samplesWritten >= RECORD_SAMPLES) {
+    recording = false;
+    recordingDone = true; // loop() stops the peripheral (PDM.end) safely
   }
 }
 
@@ -97,21 +102,11 @@ void setup()
   Serial.print(sizeof(recordBuffer) / 1024);
   Serial.println(" kB RAM");
 
-  nrfx_pdm_config_t cfg = NRFX_PDM_DEFAULT_CONFIG(WB_IO4 /*CLK*/, WB_IO3 /*DIN*/);
-#if defined(PDM_RATIO_RATIO_Ratio80)
-  cfg.clock_freq = NRF_PDM_FREQ_1280K; // /80 -> 16.000 kHz
-  cfg.ratio      = NRF_PDM_RATIO_80;   // VERIFY: .ratio exists in the BSP's nrfx version
-#else
-  cfg.clock_freq = NRF_PDM_FREQ_1032K; // /64 -> ~16.125 kHz; pass --rate 16125 to pcm_to_wav.py
-#endif
-  cfg.mode   = NRF_PDM_MODE_MONO;
-  cfg.edge   = NRF_PDM_EDGE_LEFTRISING;
-  cfg.gain_l = 40;
-
-  if (nrfx_pdm_init(&cfg, pdm_handler) != NRFX_SUCCESS) {
-    Serial.println("ERROR: nrfx_pdm_init failed — RAK18000 in the IO slot?");
-    while (1) { digitalWrite(LED_BLUE, !digitalRead(LED_BLUE)); delay(100); }
-  }
+  // PDM pins: DATA (DIN) = WB_IO3, CLK = WB_IO4. Third arg is a mic power-gate
+  // pin; the RAK18000 is always powered from the IO slot, so pass -1 (none).
+  PDM.setPins(WB_IO3 /*data*/, WB_IO4 /*clk*/, -1 /*pwr*/);
+  PDM.setBufferSize(PDM_CHUNK_BYTES);
+  PDM.onReceive(onPDMdata); // registered once; begin() starts sampling per 'r'
 
   Serial.println("Send 'r' to record.");
 }
@@ -119,17 +114,24 @@ void setup()
 // ----------------------------------------------------------------- loop ----
 void loop()
 {
-  if (Serial.available() && Serial.read() == 'r' && !recording) {
+  if (Serial.available() && Serial.read() == 'r' && !recording && !recordingDone) {
     samplesWritten = 0;
-    recordingDone = false;
     recording = true;
     digitalWrite(LED_BLUE, HIGH);
     Serial.println("Recording...");
-    nrfx_pdm_start();
+    // begin() resets gain, so setGain() must come after it.
+    if (!PDM.begin(1 /*mono*/, SAMPLE_RATE_HZ)) {
+      Serial.println("ERROR: PDM.begin failed — RAK18000 in the IO slot?");
+      recording = false;
+      digitalWrite(LED_BLUE, LOW);
+      while (1) { digitalWrite(LED_BLUE, !digitalRead(LED_BLUE)); delay(100); }
+    }
+    PDM.setGain(40); // 0..80; raise if too quiet
   }
 
   if (recordingDone) {
     recordingDone = false;
+    PDM.end(); // stop the peripheral + free the mic until the next 'r'
     digitalWrite(LED_BLUE, LOW);
 
     Serial.print("-----BEGIN AUDIO base64 rate=");
@@ -137,7 +139,12 @@ void loop()
     Serial.print(" bits=16 samples=");
     Serial.print(RECORD_SAMPLES);
     Serial.println("-----");
-    dumpBase64((const uint8_t *)recordBuffer, sizeof(recordBuffer));
+    //skip the first 800 samples to avoid the PDM filter's start-up transient
+    //(800 samples = 800*2 bytes, so subtract that many BYTES from the length)
+    dumpBase64((const uint8_t *)&recordBuffer[800],
+               sizeof(recordBuffer) - 800 * sizeof(int16_t));
+
+    //dumpBase64((const uint8_t *)recordBuffer, sizeof(recordBuffer));
     Serial.println("-----END AUDIO-----");
     Serial.println("Send 'r' to record again.");
 

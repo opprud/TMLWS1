@@ -231,11 +231,11 @@ PDM+DMA fills buffer A  ──►  event: A released
 ```
 
 - Zero samples lost; CPU and peripheral never touch the same buffer
-- nrfx PDM API: `buffer_requested` event → hand it the *other* buffer
+- `PDM` library: the double buffer is internal — you drain each finished block in the `onReceive` callback
 - Same pattern later carries **live inference** (Day 3): DSP on B while A fills
 
 <!--
-The one firmware pattern from this module worth internalising. The PDM peripheral streams continuously and won't wait, so: two buffers, hardware fills one while software drains the other, swap on the event callback. In the nrfx API this appears as the buffer_requested event where you supply the next buffer. Today it feeds a recorder; on Day 3 the identical skeleton runs feature extraction and NN inference on one buffer while the next records — continuous live classification. The old course had a half-finished RAM-buffer assignment gesturing at this; our version actually ships.
+The one firmware pattern from this module worth internalising. The PDM peripheral streams continuously and won't wait, so: two buffers, hardware fills one while software drains the other, swap on the event callback. The Adafruit `PDM` library owns the two buffers for us; we just supply an onReceive callback that reads out the finished block. (The raw nrfx PDM driver, which exposes buffer_requested/released directly, is not shipped by this BSP.) Today it feeds a recorder; on Day 3 the identical skeleton runs feature extraction and NN inference on one buffer while the next records — continuous live classification. The old course had a half-finished RAM-buffer assignment gesturing at this; our version actually ships.
 -->
 
 ---
@@ -250,7 +250,7 @@ The one firmware pattern from this module worth internalising. The PDM periphera
 - **Done when:** you've played your clip back in Studio's browser player
 
 <!--
-Part B — the slower, RAM-buffered path. The mandatory step is LISTENING to the WAV before uploading: ticks mean dropped dump chunks, chipmunks mean the wrong sample rate (see the --rate 16125 note). One good clip per label beats five unchecked ones.
+Part B — the slower, RAM-buffered path. The mandatory step is LISTENING to the WAV before uploading: ticks mean dropped dump chunks, chipmunks mean the wrong sample rate (the recorder runs at exactly 16.000 kHz and stamps it in the BEGIN marker, so pcm_to_wav.py picks it up automatically — no --rate needed). One good clip per label beats five unchecked ones.
 -->
 
 ---

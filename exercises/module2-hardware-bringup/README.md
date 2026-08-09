@@ -76,7 +76,9 @@ At rest: one axis ≈ ±9.81 m/s², the others near 0. If you see values pinned 
 
 ## Exercise 3 — PDM microphone level meter (`mic-level/`)
 
-Bring up the RAK18000 microphone using the nRF52840's hardware PDM peripheral via the `nrfx_pdm` driver (bundled with the Adafruit BSP — no extra library). The peripheral demodulates the 1-bit mic stream to 16-bit PCM @ 16 kHz and DMAs it into RAM; the sketch double-buffers and prints an RMS level + bargraph 10× per second.
+Bring up the RAK18000 microphone using the nRF52840's hardware PDM peripheral via the Adafruit BSP's bundled `PDM` Arduino library (`<PDM.h>` — auto-discovered, no extra `lib_deps`). The peripheral demodulates the 1-bit mic stream to 16-bit PCM @ 16 kHz and DMAs it into RAM; the library double-buffers and hands finished blocks to an `onReceive` callback, and the sketch prints an RMS level + bargraph 10× per second.
+
+> The raw `nrfx_pdm` *driver* is **not** shipped by this BSP (only its header), so `nrfx_pdm_init()` won't link and `NRFX_PDM_DEFAULT_CONFIG` references an undefined `NRFX_PDM_DEFAULT_CONFIG_IRQ_PRIORITY`. Use the `PDM` library.
 
 Key facts baked into the code:
 
@@ -84,7 +86,7 @@ Key facts baked into the code:
 |---|---|
 | PDM DATA | `WB_IO3` |
 | PDM CLK | `WB_IO4` |
-| Clock/ratio | 1.28 MHz ÷ 80 → **16.000 kHz** (fallback 1.032 MHz ÷ 64 ≈ 16.125 kHz) |
+| Clock/ratio | 1.28 MHz ÷ 80 → **16.000 kHz** (the library's 16 kHz mode) |
 | Mode | mono, left channel, gain 40 |
 
 ### Steps
@@ -108,7 +110,7 @@ RMS 5120 ###################################################
 
 ### Read the code — it matters later
 
-The **double-buffer pattern** in `pdm_handler()` (`buffer_requested` → hand over the next buffer; `buffer_released` → flag it for `loop()`) is reused verbatim in Module 3's recorder, and on Day 3 it carries live inference. Two minutes reading it now pays off twice.
+The **callback-drain pattern** in `onPDMdata()` (read the finished block out of the library's double buffer, flag it for `loop()`) is reused in Module 3's recorder, and on Day 3 it carries live inference. Two minutes reading it now pays off twice.
 
 ---
 
@@ -121,8 +123,8 @@ The **double-buffer pattern** in `pdm_handler()` (`buffer_requested` → hand ov
 | Upload works, monitor shows nothing | wrong baud (use 115200); or reopen the monitor — USB re-enumerates after every flash |
 | `Failed to find LIS3DH` / ERROR at 0x18 | module not seated / wrong slot (must be **A**) / `WB_IO2` line removed from the sketch |
 | Accel values frozen | you're reading before the data rate ticks — or the module isn't screwed down and lost contact |
-| Mic: build error around `nrfx_pdm` | uncomment `build_flags = -DNRFX_PDM_ENABLED=1` in `platformio.ini` (see `VERIFY` note) |
-| Mic: RMS is always 0 | DATA/CLK swapped — the config must be `NRFX_PDM_DEFAULT_CONFIG(WB_IO4, WB_IO3)`, CLK first |
+| Mic: build error mentioning `nrfx_pdm` / `NRFX_PDM_DEFAULT_CONFIG_IRQ_PRIORITY` | old code used the unshipped nrfx driver — use the `PDM` library (`#include <PDM.h>`, `PDM.begin(1, 16000)`) as in `mic-level/` |
+| Mic: RMS is always 0 | DATA/CLK swapped — the call must be `PDM.setPins(WB_IO3 /*data*/, WB_IO4 /*clk*/, -1)` |
 | Mic: constant huge RMS | mic module not seated; or gain cranked with the monitor's fan next to it (yes, really) |
 | Everything broken on one laptop | borrow a neighbour's board to bisect: board vs laptop. Flag the instructor early. |
 

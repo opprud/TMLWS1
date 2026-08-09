@@ -30,6 +30,7 @@
 
 #include <Arduino.h>
 #include <PDM.h>
+#include <math.h>
 
 // ---------------------------------------------------------------- config ---
 #define PDM_BUFFER_BYTES 512 // 256 int16 samples per half-buffer (16 ms @ 16 kHz)
@@ -75,6 +76,7 @@ void setup()
   }
 
   PDM.setGain(40); // 0..80, 40 = 0 dB-ish default; raise if too quiet
+  //PDM.setGain(60); // 0..80, 40 = 0 dB-ish default; raise if too quiet
 
   Serial.println("Sampling at 16 kHz. Make some noise...");
 }
@@ -84,13 +86,18 @@ void loop()
 {
   static uint64_t sumSquares = 0;
   static uint32_t sampleCount = 0;
+  static int16_t min, max;
 
   if (samplesRead > 0) {
     int n = samplesRead;
     samplesRead = 0; // release the landing zone for the next IRQ
+    min=max=0;
 
     for (int i = 0; i < n; i++) {
       sumSquares += (int32_t)sampleBuffer[i] * sampleBuffer[i];
+      //get min /max
+      if(sampleBuffer[i] < min) min = sampleBuffer[i];
+      if(sampleBuffer[i] > max) max = sampleBuffer[i];
     }
     sampleCount += n;
   }
@@ -109,15 +116,30 @@ void loop()
     for (int i = 0; i < bars; i++) Serial.print('#');
     Serial.println();
 
+#if 0
     // TODO(student) 1: convert RMS to dBFS: 20*log10(rms / 32768.0).
     //                  Print it. What's the level of silence? Of speech?
+    float dbfs = 20.0f * log10f(rms / 32768.0f);
+    Serial.print("Audio level : ");
+    Serial.print(dbfs, 2);
+    Serial.println("[dBFS]");
 
     // TODO(student) 2: also track the min/max sample values per report.
     //                  Clap next to the mic — do you clip (+/-32767)?
+    Serial.print("Min sample: ");
+    Serial.print(min);
+    Serial.print("  Max sample: ");
+    Serial.println(max);
 
     // TODO(student) 3: light LED_BLUE when RMS exceeds a threshold you pick.
     //                  You just built a clap-activated light.
+    if(rms > 1000) {
+      digitalWrite(LED_BLUE, HIGH);
+    } else {
+      digitalWrite(LED_BLUE, LOW);
+    }
 
     // TODO(student) 4 (bonus): try PDM.setGain(60) and re-flash. What changed?
+#endif
   }
 }

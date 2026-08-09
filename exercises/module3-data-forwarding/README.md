@@ -131,9 +131,9 @@ Start-up transient trimming, dump-time arithmetic, and finding the real RAM ceil
 | Axis names wrong / want to rename | also `--clean` — names are set at first connect |
 | Samples in Studio look chopped / gaps | cable/hub flakiness — use a direct USB port, not a hub |
 | `pcm_to_wav.py`: "No BEGIN AUDIO block found" | capture file is missing the marker lines — re-capture including the full dump |
-| WAV plays too fast/slow (chipmunk/whale) | clock fallback in use → convert with `--rate 16125` (see the `VERIFY` note in the firmware) |
+| WAV plays too fast/slow (chipmunk/whale) | rate mismatch — the recorder runs at exactly 16.000 kHz and stamps it in the BEGIN marker; if you forced a wrong `--rate`, drop it and let the marker win |
 | WAV has periodic ticks | dropped chunks during dump capture — don't scroll/interact with the monitor mid-dump; prefer `pio device monitor \| tee` |
-| Audio is very quiet | raise `cfg.gain_l` (40 → 60) and re-flash |
+| Audio is very quiet | raise the gain — `PDM.setGain(40 → 60)` after `PDM.begin()` — and re-flash |
 | Uploader: sample rejected / wrong label | name files `label.NN.wav` or pass `--label`; check the upload summary line |
 
 **Done early?** Start thinking like Day 2: mount the board on something that vibrates (the room's ventilation, your laptop fan exhaust) and record `on` vs `off` accelerometer samples. Can you see the difference in Studio? That's tomorrow's entire morning, in miniature.
