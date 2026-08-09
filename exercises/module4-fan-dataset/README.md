@@ -14,9 +14,8 @@ Build a vibration data-acquisition rig from your WisBlock kit and a 120 mm PC fa
 ## 1. Build the rig
 
 1. Power off (unplug USB). Confirm the RAK1904 sits in **slot A** (I²C address `0x18`).
-2. Mount the WisBlock **rigidly** on the fan frame:
-   - Zip-tie the base board to one corner of the fan frame through the fan's mounting holes. Pull tight — the board must not rattle.
-   - Alternative: thin double-sided tape between base board underside and the flat of the fan frame. **No foam tape, no blu-tack** — soft mounts filter away exactly the vibration you want.
+2. Mount the WisBlock **rigidly** on the fan frame using a 2.5mm screw, washer and nut
+   **No foam tape, or zip ties** — soft mounts filter away exactly the vibration you want.
 3. Note the **sensor axis orientation** relative to the fan's rotation axis (e.g. "Z parallel to shaft"). Write it down (metadata, step 4).
 4. Tape the USB cable to the desk ~10 cm from the board (strain relief — a swinging cable adds fake low-frequency signal).
 5. Place the fan on a firm surface. Rubber feet / a mousepad under the fan is fine (isolates desk noise) as long as it is the same for all recordings.
