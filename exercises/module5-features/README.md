@@ -63,26 +63,40 @@ A PlatformIO project for the RAK4631 that computes, on-device:
 
 ```bash
 cd features-c
-pio run -t upload
-pio device monitor          # 115200 baud
+pio run -e naive -t upload      # default: plain-C DFT, zero external libraries
+pio device monitor              # 115200 baud
 ```
 
-> **FFT backend.** The project builds with `-DUSE_NAIVE_DFT` (a plain-C DFT) by
-> default, so it compiles with zero external libraries and always works in class.
-> The DFT is numerically identical to the FFT and is validated by the same golden
-> windows, so nothing in B2 changes.
->
-> **Optional: real CMSIS-DSP FFT.** The raw `ARM-software/CMSIS-DSP` repo is not a
-> PlatformIO-packaged library (no `srcFilter` in its `library.json`), so adding it
-> to `lib_deps` makes LDF try to compile its `Examples/.../startup_ARMCM*.c` and
-> fail — and the Adafruit nRF52 BSP ships CMSIS *core* only, no DSP math lib to
-> link. If you want the real `arm_rfft_fast_f32` path, vendor a trimmed CMSIS-DSP
-> (only `Source/` + `Include/`) into `features-c/lib/CMSIS-DSP/` with a
-> `library.json` that sets `"srcFilter": ["+<Source/*>"]` and `"includeDir":
-> "Include"`, then remove `-DUSE_NAIVE_DFT`. This is an extension, not required —
-> the naive path is the supported class build.
+> **FFT backend.** There are two build environments (`platformio.ini`):
+> - **`naive`** (default) — a plain-C O(N²) DFT (`band_energies_naive`). Compiles
+>   with **zero external libraries**, always works in class. Numerically identical
+>   to the FFT and validated by the same golden windows, so B2 is unchanged.
+> - **`cmsis`** — the real ARM CMSIS-DSP hardware FFT (`arm_rfft_fast_f32`), which
+>   also runs the naive DFT alongside it so you can **compare runtimes** (B4).
 
-The firmware computes features on a **deterministic synthetic golden window** (25 Hz + 40 Hz sines + a small 3.1 Hz sine — the exact same formula exists in the validation script) and prints:
+### B1b. Optional: real CMSIS-DSP FFT (the runtime comparison)
+
+The raw `ARM-software/CMSIS-DSP` repo is **not** a PlatformIO-packaged library (its
+`library.json` has no `srcFilter`), so putting it in `lib_deps` makes LDF try to
+compile `Examples/.../startup_ARMCM*.c` and fail — and the Adafruit nRF52 BSP ships
+CMSIS *core* only, no DSP math lib to link. We solve this by vendoring a trimmed
+CMSIS-DSP into `lib/CMSIS-DSP/`: the glue `library.json` (committed) compiles only
+the two umbrella files needed for the FFT, and you fetch the ARM source once:
+
+```bash
+cd features-c
+# clone upstream to a temp dir, then drop only Source/ + Include/ next to our
+# committed lib/CMSIS-DSP/library.json (which supplies the srcFilter glue):
+git clone --depth 1 --branch v1.16.2 https://github.com/ARM-software/CMSIS-DSP /tmp/CMSIS-DSP
+cp -r /tmp/CMSIS-DSP/Source /tmp/CMSIS-DSP/Include lib/CMSIS-DSP/
+
+pio run -e cmsis -t upload      # real CMSIS-DSP FFT + timing harness
+```
+
+The fetched `Source/`/`Include/` are gitignored (only `library.json` is tracked).
+CMSIS-DSP is Apache-2.0. The `naive` env never touches any of this.
+
+The firmware computes features on a **deterministic synthetic golden window** (25 Hz + 40 Hz sines + a small 3.1 Hz sine — the exact same formula exists in the validation script) and prints (the `naive` env):
 
 ```
 FEATURES_BEGIN
@@ -91,6 +105,13 @@ axis=x mean=... std=... rms=... min=... max=... zc=...
 axis=x band0=... band1=... band2=... band3=... band4=...
 timing stats_us=... fft_us=...
 FEATURES_END
+```
+
+The `cmsis` env adds both FFT timings and an agreement check:
+
+```
+timing stats_us=... fft_us=... fft_naive_us=... fft_cmsis_us=...
+fft_agree max_rel=...           # naive vs CMSIS band energies — must be ~1e-6
 ```
 
 ### B2. Validate against Python
@@ -121,17 +142,24 @@ The script generates the identical window in numpy, computes the identical featu
    python validate_features.py --port ... --csv include/golden/win_normal.csv
    ```
 
-### B4. Report timing
+### B4. Report timing — naive DFT vs CMSIS-DSP FFT
 
-Fill in (from the serial output):
+Flash the **`cmsis`** env (B1b) and read the two FFT numbers from one window:
 
 | Stage | µs @ 64 MHz | % of a 2 s window |
 |---|---|---|
 | time-domain stats (256 samples, 1 axis) | | |
-| 256-pt FFT + band energies (1 axis) | | |
+| 256-pt band energies — **naive DFT** (`fft_naive_us`) | | |
+| 256-pt band energies — **CMSIS-DSP FFT** (`fft_cmsis_us`) | | |
+
+The `fft_agree max_rel` line proves both backends compute the *same* band energies
+(~1e-6) — so the only difference you're paying for is speed. The naive O(N²) DFT is
+roughly two orders of magnitude slower than the hardware `arm_rfft_fast_f32`; that
+gap is the reason real firmware uses CMSIS-DSP. (The class-default `naive` env still
+runs fine — it's just the slow number in this table.)
 
 > **Troubleshooting (Track B)**
-> - *Build fails around `arm_math.h` / CMSIS-DSP*: you've opted into real CMSIS-DSP but not vendored it correctly — see "Optional: real CMSIS-DSP FFT" above. The default build ships `-DUSE_NAIVE_DFT` and does not need CMSIS at all.
+> - *Build fails around `arm_math.h` / CMSIS-DSP*: you're on `-e cmsis` but haven't fetched the source — see B1b. The default `-e naive` build needs no CMSIS at all.
 > - *std mismatches by a few %*: population vs sample std (`/N` vs `/N-1`). Both sides here use population (`numpy.std` default). If you "fixed" one side, unfix it.
 > - *Band energies off by a constant factor*: normalisation mismatch — neither side must scale the forward FFT; check you didn't divide by N on one side only.
 > - *zc off by one*: count sign changes of `x[i]-mean` for i=1..N-1, strict product `< 0` (values exactly on the mean don't count). Both implementations use this rule.

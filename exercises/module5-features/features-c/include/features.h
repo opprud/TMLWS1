@@ -32,8 +32,20 @@ void time_features_compute(const float *x, int n, time_features_t *out);
 
 // n must equal FEAT_FFT_N. Writes n_bands energies into bands[].
 // Returns 0 on success, -1 on bad arguments.
+// Default entry point: uses CMSIS-DSP when built with -DUSE_CMSIS_DSP, else the
+// plain-C DFT. Both produce identical band energies (validated to < 1e-3).
 int band_energies_compute(const float *x, int n, float fs,
                           float *bands, int n_bands);
+
+// Explicit backends, exposed so main.cpp can time them head-to-head.
+// band_energies_naive is always available (no external deps); band_energies_cmsis
+// exists only in a -DUSE_CMSIS_DSP build (needs the vendored CMSIS-DSP lib).
+int band_energies_naive(const float *x, int n, float fs,
+                        float *bands, int n_bands);
+#ifdef USE_CMSIS_DSP
+int band_energies_cmsis(const float *x, int n, float fs,
+                        float *bands, int n_bands);
+#endif
 
 #ifdef __cplusplus
 }

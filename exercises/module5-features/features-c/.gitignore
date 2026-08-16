@@ -3,3 +3,8 @@
 .vscode/c_cpp_properties.json
 .vscode/launch.json
 .vscode/ipch
+
+# CMSIS-DSP is fetched at setup (see README "Optional: real CMSIS-DSP FFT").
+# Commit only the glue manifest; the fetched ARM source tree stays local.
+lib/CMSIS-DSP/*
+!lib/CMSIS-DSP/library.json

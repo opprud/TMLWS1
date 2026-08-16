@@ -5,9 +5,11 @@
 #include <math.h>
 #include <string.h>
 
-#ifndef USE_NAIVE_DFT
-// VERIFY: arm_math.h must resolve via the CMSIS-DSP lib_deps entry (see
-// platformio.ini). If the build fails here, add -DUSE_NAIVE_DFT to build_flags.
+#ifdef USE_CMSIS_DSP
+// Real ARM CMSIS-DSP FFT path. arm_math.h resolves via the vendored CMSIS-DSP
+// library (features-c/lib/CMSIS-DSP, fetched at setup — see README). Only built
+// for -DUSE_CMSIS_DSP; the default build uses the plain-C DFT below and needs
+// no external libraries.
 #include "arm_math.h"
 #endif
 
@@ -61,51 +63,11 @@ static void apply_hann(const float *x, int n, float *out)
     }
 }
 
-#ifndef USE_NAIVE_DFT
-
-static arm_rfft_fast_instance_f32 s_rfft;
-static bool s_rfft_ready = false;
-static float s_fft_out[FEAT_FFT_N];   // packed: [DC, Nyquist, re1, im1, re2, im2, ...]
-
-int band_energies_compute(const float *x, int n, float fs,
-                          float *bands, int n_bands)
-{
-    if (n != FEAT_FFT_N || n_bands <= 0 || bands == NULL) return -1;
-
-    if (!s_rfft_ready) {
-        // VERIFY: arm_rfft_fast_init_f32 returns ARM_MATH_SUCCESS for N=256 when
-        // the required twiddle tables are compiled in (they are, in full CMSIS-DSP builds).
-        if (arm_rfft_fast_init_f32(&s_rfft, FEAT_FFT_N) != ARM_MATH_SUCCESS) return -1;
-        s_rfft_ready = true;
-    }
-
-    apply_hann(x, n, s_windowed);
-    arm_rfft_fast_f32(&s_rfft, s_windowed, s_fft_out, 0 /* forward */);
-
-    for (int b = 0; b < n_bands; b++) bands[b] = 0.0f;
-    const float band_hz = (fs * 0.5f) / (float)n_bands;
-    const float bin_hz = fs / (float)n;
-
-    // CMSIS packing: s_fft_out[0] = DC (real), s_fft_out[1] = Nyquist (real),
-    // then re/im pairs for k = 1 .. n/2-1. We skip DC and Nyquist — matching
-    // the Python reference (freqs >= b*band_hz & < (b+1)*band_hz, sel[0]=False).
-    for (int k = 1; k < n / 2; k++) {
-        const float re = s_fft_out[2 * k];
-        const float im = s_fft_out[2 * k + 1];
-        const float freq = bin_hz * (float)k;
-        int b = (int)(freq / band_hz);
-        if (b >= n_bands) b = n_bands - 1;   // guard float edge cases
-        bands[b] += re * re + im * im;
-    }
-    return 0;
-}
-
-#else  // USE_NAIVE_DFT --------------------------------------------------------
-
-// Plain-C O(N^2) DFT fallback: numerically equivalent, ~2 orders of magnitude
-// slower (still fast enough for the exercise). No external dependencies.
-int band_energies_compute(const float *x, int n, float fs,
-                          float *bands, int n_bands)
+// --- Naive plain-C DFT backend (always built, zero dependencies) -------------
+// O(N^2), ~2 orders of magnitude slower than the hardware FFT — that gap is the
+// whole point of the timing comparison against band_energies_cmsis().
+int band_energies_naive(const float *x, int n, float fs,
+                        float *bands, int n_bands)
 {
     if (n != FEAT_FFT_N || n_bands <= 0 || bands == NULL) return -1;
 
@@ -131,4 +93,53 @@ int band_energies_compute(const float *x, int n, float fs,
     return 0;
 }
 
-#endif // USE_NAIVE_DFT
+#ifdef USE_CMSIS_DSP
+// --- CMSIS-DSP hardware-accelerated backend (Cortex-M4F rfft) ----------------
+static arm_rfft_fast_instance_f32 s_rfft;
+static bool s_rfft_ready = false;
+static float s_fft_out[FEAT_FFT_N];   // packed: [DC, Nyquist, re1, im1, re2, im2, ...]
+
+int band_energies_cmsis(const float *x, int n, float fs,
+                        float *bands, int n_bands)
+{
+    if (n != FEAT_FFT_N || n_bands <= 0 || bands == NULL) return -1;
+
+    if (!s_rfft_ready) {
+        // Needs the N=256 rfft twiddle tables compiled into CommonTables.
+        if (arm_rfft_fast_init_f32(&s_rfft, FEAT_FFT_N) != ARM_MATH_SUCCESS) return -1;
+        s_rfft_ready = true;
+    }
+
+    apply_hann(x, n, s_windowed);
+    arm_rfft_fast_f32(&s_rfft, s_windowed, s_fft_out, 0 /* forward */);
+
+    for (int b = 0; b < n_bands; b++) bands[b] = 0.0f;
+    const float band_hz = (fs * 0.5f) / (float)n_bands;
+    const float bin_hz = fs / (float)n;
+
+    // CMSIS packing: s_fft_out[0] = DC (real), s_fft_out[1] = Nyquist (real),
+    // then re/im pairs for k = 1 .. n/2-1. We skip DC and Nyquist — matching
+    // both the naive backend and the Python reference (sel[0]=False).
+    for (int k = 1; k < n / 2; k++) {
+        const float re = s_fft_out[2 * k];
+        const float im = s_fft_out[2 * k + 1];
+        const float freq = bin_hz * (float)k;
+        int b = (int)(freq / band_hz);
+        if (b >= n_bands) b = n_bands - 1;   // guard float edge cases
+        bands[b] += re * re + im * im;
+    }
+    return 0;
+}
+#endif // USE_CMSIS_DSP
+
+// --- Default entry point used by the validation path -------------------------
+// Picks CMSIS when available, else the naive DFT. Both agree to < 1e-3.
+int band_energies_compute(const float *x, int n, float fs,
+                          float *bands, int n_bands)
+{
+#ifdef USE_CMSIS_DSP
+    return band_energies_cmsis(x, n, fs, bands, n_bands);
+#else
+    return band_energies_naive(x, n, fs, bands, n_bands);
+#endif
+}

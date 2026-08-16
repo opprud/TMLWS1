@@ -55,9 +55,33 @@ static void print_features(const char *window_name)
     time_features_compute(window_buf, N, &tf);
     uint32_t stats_us = micros() - t0;
 
+#ifdef USE_CMSIS_DSP
+    // Run BOTH FFT backends on the same window and time each. `bands` (printed
+    // below and validated against numpy) comes from CMSIS; the naive result is
+    // only used to time the plain-C DFT and cross-check agreement.
+    float bands_naive[FEAT_N_BANDS];
+    t0 = micros();
+    int rc_naive = band_energies_naive(window_buf, N, FS, bands_naive, FEAT_N_BANDS);
+    uint32_t fft_naive_us = micros() - t0;
+
+    t0 = micros();
+    int rc = band_energies_cmsis(window_buf, N, FS, bands, FEAT_N_BANDS);
+    uint32_t fft_cmsis_us = micros() - t0;
+
+    float agree_max_rel = 0.0f;
+    if (rc == 0 && rc_naive == 0) {
+        for (int b = 0; b < FEAT_N_BANDS; b++) {
+            float denom = fabsf(bands[b]);
+            if (denom < 1e-6f) denom = 1e-6f;
+            float rel = fabsf(bands[b] - bands_naive[b]) / denom;
+            if (rel > agree_max_rel) agree_max_rel = rel;
+        }
+    }
+#else
     t0 = micros();
     int rc = band_energies_compute(window_buf, N, FS, bands, FEAT_N_BANDS);
     uint32_t fft_us = micros() - t0;
+#endif
 
     Serial.println("FEATURES_BEGIN");
     snprintf(linebuf, sizeof(linebuf), "window=%s n=%d fs=%.1f", window_name, N, (double)FS);
@@ -76,9 +100,21 @@ static void print_features(const char *window_name)
     } else {
         Serial.println("axis=x bands=ERROR");
     }
+#ifdef USE_CMSIS_DSP
+    // fft_us kept as an alias (= CMSIS) so validate_features.py's timing line
+    // still resolves; the two explicit numbers are the actual comparison.
+    snprintf(linebuf, sizeof(linebuf),
+             "timing stats_us=%lu fft_us=%lu fft_naive_us=%lu fft_cmsis_us=%lu",
+             (unsigned long)stats_us, (unsigned long)fft_cmsis_us,
+             (unsigned long)fft_naive_us, (unsigned long)fft_cmsis_us);
+    Serial.println(linebuf);
+    snprintf(linebuf, sizeof(linebuf), "fft_agree max_rel=%.2e", (double)agree_max_rel);
+    Serial.println(linebuf);
+#else
     snprintf(linebuf, sizeof(linebuf), "timing stats_us=%lu fft_us=%lu",
              (unsigned long)stats_us, (unsigned long)fft_us);
     Serial.println(linebuf);
+#endif
     Serial.println("FEATURES_END");
 }
 

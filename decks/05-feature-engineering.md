@@ -358,10 +358,12 @@ arm_cmplx_mag_f32(output, mag, 128);       // -> 128 magnitude bins
 ```
 
 - 256-point float FFT: well under a millisecond at 64 MHz
+- The exercise's `cmsis` build **measures this against the plain-C DFT** on the same
+  window — identical band energies, but the naive O(N²) DFT is **~100× slower**
 - CMSIS-DSP also has one-call stats: `arm_mean_f32`, `arm_rms_f32`, `arm_std_f32` — compare against your loop!
 
 <!--
-VERIFY (also flagged in the exercise): how CMSIS-DSP is linked in this PlatformIO + Adafruit nRF52 BSP setup. The BSP ships CMSIS headers, but the DSP library binary/sources may not be linked by default; the exercise platformio.ini pins lib_deps to a CMSIS-DSP Arduino library package and there's a fallback plain-C DFT (#define USE_NAIVE_DFT) so nobody is blocked in class. arm_rfft_fast_f32 output packing quirk: output[0]=DC real, output[1]=Nyquist real (packed), then re/im pairs — the exercise code handles it; mention or they'll wonder why bin 1 looks weird. Timing teaser: measure the FFT with micros() — leads into the CMSIS statistics functions from the old assignment (i4a720c49) with the same timing methodology.
+How CMSIS-DSP is linked here (resolved): the Adafruit nRF52 BSP ships CMSIS *core* only — no arm_math.h, no DSP math lib — and the raw ARM-software/CMSIS-DSP repo is not a PlatformIO-packaged library (LDF tries to compile its Examples/startup_ARMCM*.c and fails). So features-c vendors a trimmed CMSIS-DSP under lib/CMSIS-DSP/ (a committed library.json with a srcFilter that compiles just the FFT umbrellas; the ARM Source/Include are fetched at setup). Two build envs: `naive` (default, plain-C DFT, zero deps — nobody blocked in class) and `cmsis` (real arm_rfft_fast_f32). The cmsis firmware runs BOTH backends and prints fft_naive_us vs fft_cmsis_us plus an agreement check — that head-to-head is the point of the slide. arm_rfft_fast_f32 output packing quirk: output[0]=DC real, output[1]=Nyquist real (packed), then re/im pairs — the exercise code handles it; mention or they'll wonder why bin 1 looks weird.
 -->
 
 ---
@@ -392,9 +394,17 @@ uint32_t dt = micros() - t0;
 Serial.printf("time features: %lu us\n", dt);
 ```
 
-- Typical (64 MHz M4F, N=256, per axis): stats ≈ tens of µs, FFT ≈ hundreds of µs
-- Compare: window is 2 000 000 µs long → feature cost is **≈ 0.1 %** duty cycle
+- Typical (64 MHz M4F, N=256, per axis): stats ≈ tens of µs; **CMSIS FFT ≈ hundreds
+  of µs**, the **naive DFT ≈ tens of ms** (~100× — measure both with the `cmsis` env)
+- Duty cycle over a 2 s window: CMSIS FFT **≈ 0.1 %**; the naive DFT ~100× that — both
+  small, but the gap is why production firmware links the hardware FFT
 - This headroom is *the* TinyML power story: compute briefly, sleep long
+
+<!--
+Fill the exact µs live from the cmsis-env serial output (fft_cmsis_us / fft_naive_us)
+if a board is on the bench; the order-of-magnitude contrast above is the takeaway
+either way. Naive 256-pt DFT is ~32k trig evals/axis → tens of ms on the M4F.
+-->
 
 <!--
 Numbers above are order-of-magnitude expectations, not measurements — participants produce the real numbers in the exercise (and it's deliberately satisfying). Connect to Nordby's energy slide in Module 6: active burst + long sleep is why on-device beats streaming. If someone's stats loop takes milliseconds, check they compiled with optimisation (PlatformIO default -Os is fine) and aren't printf-ing inside the loop.

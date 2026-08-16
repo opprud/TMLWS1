@@ -1,0 +1,19 @@
+{
+  "name": "CMSIS-DSP",
+  "version": "1.16.2",
+  "description": "ARM CMSIS-DSP — trimmed to the FFT path for the features-c FFT-timing comparison. The Source/ and Include/ trees are fetched at setup (see ../README.md), not committed; only this glue manifest is tracked.",
+  "license": "Apache-2.0",
+  "keywords": ["dsp", "fft", "cmsis", "cortex-m4"],
+  "build": {
+    "srcFilter": [
+      "-<*>",
+      "+<Source/TransformFunctions/TransformFunctions.c>",
+      "+<Source/CommonTables/CommonTables.c>"
+    ],
+    "includeDir": "Include",
+    "flags": [
+      "-DARM_MATH_CM4",
+      "-DARM_MATH_LOOPUNROLL"
+    ]
+  }
+}
