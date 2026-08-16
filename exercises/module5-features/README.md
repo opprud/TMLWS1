@@ -56,7 +56,7 @@ Run top to bottom; stop at every **Question** cell:
 A PlatformIO project for the RAK4631 that computes, on-device:
 
 - time-domain: **mean, std (population), RMS, min, max, zero-crossings** — one pass, no malloc
-- frequency-domain: **256-point FFT → 5 × 10 Hz band energies** (CMSIS-DSP, with a plain-C DFT fallback)
+- frequency-domain: **256-point FFT → 5 × 10 Hz band energies** (plain-C DFT by default; real CMSIS-DSP is an optional opt-in, see below)
 - execution time of each stage via `micros()`
 
 ### B1. Build & flash
@@ -66,6 +66,21 @@ cd features-c
 pio run -t upload
 pio device monitor          # 115200 baud
 ```
+
+> **FFT backend.** The project builds with `-DUSE_NAIVE_DFT` (a plain-C DFT) by
+> default, so it compiles with zero external libraries and always works in class.
+> The DFT is numerically identical to the FFT and is validated by the same golden
+> windows, so nothing in B2 changes.
+>
+> **Optional: real CMSIS-DSP FFT.** The raw `ARM-software/CMSIS-DSP` repo is not a
+> PlatformIO-packaged library (no `srcFilter` in its `library.json`), so adding it
+> to `lib_deps` makes LDF try to compile its `Examples/.../startup_ARMCM*.c` and
+> fail — and the Adafruit nRF52 BSP ships CMSIS *core* only, no DSP math lib to
+> link. If you want the real `arm_rfft_fast_f32` path, vendor a trimmed CMSIS-DSP
+> (only `Source/` + `Include/`) into `features-c/lib/CMSIS-DSP/` with a
+> `library.json` that sets `"srcFilter": ["+<Source/*>"]` and `"includeDir":
+> "Include"`, then remove `-DUSE_NAIVE_DFT`. This is an extension, not required —
+> the naive path is the supported class build.
 
 The firmware computes features on a **deterministic synthetic golden window** (25 Hz + 40 Hz sines + a small 3.1 Hz sine — the exact same formula exists in the validation script) and prints:
 
@@ -116,7 +131,7 @@ Fill in (from the serial output):
 | 256-pt FFT + band energies (1 axis) | | |
 
 > **Troubleshooting (Track B)**
-> - *Build fails around `arm_math.h` / CMSIS-DSP*: see the `// VERIFY` note in `platformio.ini`. Quick unblock: add `-DUSE_NAIVE_DFT` to `build_flags` — a plain-C DFT replaces CMSIS (slower, same numbers).
+> - *Build fails around `arm_math.h` / CMSIS-DSP*: you've opted into real CMSIS-DSP but not vendored it correctly — see "Optional: real CMSIS-DSP FFT" above. The default build ships `-DUSE_NAIVE_DFT` and does not need CMSIS at all.
 > - *std mismatches by a few %*: population vs sample std (`/N` vs `/N-1`). Both sides here use population (`numpy.std` default). If you "fixed" one side, unfix it.
 > - *Band energies off by a constant factor*: normalisation mismatch — neither side must scale the forward FFT; check you didn't divide by N on one side only.
 > - *zc off by one*: count sign changes of `x[i]-mean` for i=1..N-1, strict product `< 0` (values exactly on the mean don't count). Both implementations use this rule.
