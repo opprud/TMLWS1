@@ -36,9 +36,9 @@ static void make_synthetic_window(float *x, int n, float fs)
 
 // Uncomment to run on a window exported from your own fan data
 // (notebook 02, section 8 — README A2 step 7):
-// #include "golden/win_normal.h"
-// #define GOLDEN_WINDOW win_normal
-// #define GOLDEN_LEN    WIN_NORMAL_LEN
+#include "golden/win_normal.h"
+#define GOLDEN_WINDOW win_normal
+#define GOLDEN_LEN    WIN_NORMAL_LEN
 
 // ---- globals ----------------------------------------------------------------
 static float window_buf[FEAT_FFT_N];
