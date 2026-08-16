@@ -3,16 +3,17 @@
  * Board: RAK4631 (WisBlock), RAK1904 (LIS3DH) in SENSOR SLOT A (0x18)
  *
  * Streams 3-axis acceleration as CSV lines over USB serial at a rock-steady
- * 100 Hz, in the exact format edge-impulse-data-forwarder expects:
+ * 250 Hz, in the exact format edge-impulse-data-forwarder expects:
  *
  *     x.xx,y.yy,z.zz\r\n
  *
  * The forwarder auto-detects the rate by timing the lines, so pacing is done
  * with an absolute micros() deadline (no drift) instead of delay() (drifts).
  *
- * 100 Hz is the course-wide convention (Modules 4-7 train on 100 Hz windows).
- * Bandwidth check: 100 Hz * ~18 bytes/line = ~1.8 kB/s of the ~11.5 kB/s that
- * 115200 baud provides. Keep total rate <= ~100 Hz x 3 axes at this baud.
+ * 250 Hz is the course-wide convention (Modules 4-7 train on 250 Hz windows).
+ * Nyquist is 125 Hz, enough to see the fan's rotation harmonics that 100 Hz
+ * would alias. Bandwidth check: 250 Hz * ~18 bytes/line = ~4.5 kB/s of the
+ * ~11.5 kB/s that 115200 baud provides — still comfortable for 3 axes.
  */
 
 #include <Arduino.h>
@@ -21,8 +22,8 @@
 #include <Adafruit_Sensor.h>
 
 #define LIS3DH_I2C_ADDR   0x18
-#define SAMPLE_RATE_HZ    100
-#define SAMPLE_PERIOD_US  (1000000UL / SAMPLE_RATE_HZ) // 10000 us
+#define SAMPLE_RATE_HZ    250
+#define SAMPLE_PERIOD_US  (1000000UL / SAMPLE_RATE_HZ) // 4000 us
 
 // Edge Impulse convention is m/s^2. NOTE: unused here — Adafruit's getEvent()
 // already returns m/s^2. Kept for reference in case you switch to raw reads.
@@ -51,9 +52,10 @@ void setup()
   }
 
   lis.setRange(LIS3DH_RANGE_4_G);
-  // Sensor ODR is set to 200 Hz — sampling internally faster than we read
-  // means we always get a fresh sample at our 100 Hz read rate.
-  lis.setDataRate(LIS3DH_DATARATE_200_HZ);
+  // The LIS3DH has no 250 Hz ODR (native steps: 100, 200, 400 Hz), so run it at
+  // 400 Hz — internally faster than our 250 Hz read rate, so getEvent() always
+  // returns a fresh sample and the anti-alias filter sits above our Nyquist.
+  lis.setDataRate(LIS3DH_DATARATE_400_HZ);
 
   nextSampleDeadline = micros() + SAMPLE_PERIOD_US;
 }
@@ -76,13 +78,13 @@ void loop()
   Serial.print("\r\n");
 
   // TODO(student) 1: verify the rate. Run `edge-impulse-data-forwarder` —
-  //                  it should report "3 axis ... at 100Hz". If it reports
-  //                  99 or 101 Hz, something in your loop is stealing time.
+  //                  it should report "3 axis ... at 250Hz". If it reports
+  //                  249 or 251 Hz, something in your loop is stealing time.
 
-  // TODO(student) 2: halve SAMPLE_RATE_HZ to 50 and re-check detection, then
-  //                  set it back to 100 — the course-wide convention that
+  // TODO(student) 2: halve SAMPLE_RATE_HZ to 125 and re-check detection, then
+  //                  set it back to 250 — the course-wide convention that
   //                  Modules 4-7 train on. (Keep the LIS3DH ODR >= your
-  //                  sample rate.)
+  //                  sample rate — here the ODR is 400 Hz.)
 
   // TODO(student) 3 (bonus): replace the busy-wait with a check that flags
   //                  (LED_BLUE on) if we ever MISS a deadline — a watchdog
