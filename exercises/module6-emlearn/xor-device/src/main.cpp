@@ -11,6 +11,7 @@
 // must be copied into lib/emlearn — see README Part 1 and platformio.ini.
 
 #include <Arduino.h>
+#include <Adafruit_TinyUSB.h>  // provides USB-CDC `Serial` on the Adafruit nRF52 BSP
 #include <stdlib.h>      // strtod — no scanf float dependency (newlib-nano)
 
 #include "xor_model.h"   // generated — defines xor_model_predict()

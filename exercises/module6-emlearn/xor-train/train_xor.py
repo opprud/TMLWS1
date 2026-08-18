@@ -83,7 +83,14 @@ def main():
     # #include <eml_trees.h> from the generated header, so the emlearn include
     # dir (`python -c "import emlearn; print(emlearn.includedir)"`) must be
     # copied into the device project -> see README Part 1 / platformio.ini.
-    cmodel = emlearn.convert(model, method="inline")
+    #
+    # dtype='float' is REQUIRED here: our features live in [0, 1], and emlearn's
+    # default integer quantisation rounds the ~0.5 split thresholds to 0 — every
+    # tree collapses to `features[i] < 0`, which is never true for [0,1] inputs,
+    # so the converted model predicts a constant 0 (the corner check below then
+    # disagrees with sklearn). Float keeps the real thresholds; the device passes
+    # float features (xor-device/src/main.cpp), so the signature matches too.
+    cmodel = emlearn.convert(model, method="inline", dtype="float")
     cmodel.save(file="xor_model.h", name="xor_model")
     print("wrote xor_model.h  ->  cp xor_model.h ../xor-device/include/")
 
