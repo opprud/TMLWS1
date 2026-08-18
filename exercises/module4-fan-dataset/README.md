@@ -14,9 +14,8 @@ Build a vibration data-acquisition rig from your WisBlock kit and a 120 mm PC fa
 ## 1. Build the rig
 
 1. Power off (unplug USB). Confirm the RAK1904 sits in **slot A** (I²C address `0x18`).
-2. Mount the WisBlock **rigidly** on the fan frame:
-   - Zip-tie the base board to one corner of the fan frame through the fan's mounting holes. Pull tight — the board must not rattle.
-   - Alternative: thin double-sided tape between base board underside and the flat of the fan frame. **No foam tape, no blu-tack** — soft mounts filter away exactly the vibration you want.
+2. Mount the WisBlock **rigidly** on the fan frame using a 2.5mm screw, washer and nut
+   **No foam tape, or zip ties** — soft mounts filter away exactly the vibration you want.
 3. Note the **sensor axis orientation** relative to the fan's rotation axis (e.g. "Z parallel to shaft"). Write it down (metadata, step 4).
 4. Tape the USB cable to the desk ~10 cm from the board (strain relief — a swinging cable adds fake low-frequency signal).
 5. Place the fan on a firm surface. Rubber feet / a mousepad under the fan is fine (isolates desk noise) as long as it is the same for all recordings.
@@ -96,12 +95,15 @@ deviations:            <anything you changed mid-session>
 ## 6. Sanity check with the feature explorer
 
 1. **Create impulse**: window size `2000` ms, window increase `1000` ms (50 % overlap) → add **Spectral Analysis** block (defaults) → add any learning block (we won't train it yet) → Save.
-2. **Spectral features** page → *Generate features*.
+2. **Spectral features** page → FFT Bins, change to 64 → Save Parameters → *Generate features*.
 3. Inspect the **feature explorer** (3-D projection of all windows):
    - `off` should sit far from everything.
    - `scrape` and `imbalance` should form their own regions.
    - `blocked` vs `normal` may overlap somewhat — that is expected at 100 Hz and is exactly what Module 5's spectral features attack. But if they are *identical*, strengthen the blockage now.
 4. Click outlier points — the explorer shows which recording/window they came from. Investigate: mislabelled? mount shifted? Delete or re-record bad files.
+5. On teh **Spectral features** page → FFT Bins, change to 256 → Save Parameters in new impulse→ *Generate features*.
+6. Explore using the feature explorer again, is calss separation better ?
+
 
 **Expected output:** 5 visually distinguishable groupings, ≥ 50 windows per class in training, ~10+ per class in test.
 
@@ -119,7 +121,7 @@ Tick every box before lunch — Modules 5/7/8 assume all of these:
 - [ ] States were recorded **interleaved**, not in blocks
 - [ ] Something legitimate varied between same-state repetitions
 - [ ] Sensor rigidly mounted; mounting unchanged for the whole session
-- [ ] Forwarder frequency ≈ 100 Hz on every recording
+- [ ] Forwarder frequency ≈ 250 Hz on every recording
 - [ ] Axes named `accX, accY, accZ`
 - [ ] Labels exactly: `normal`, `imbalance`, `blocked`, `scrape`, `off`
 - [ ] Train/test split done **by recording**, ~80/20, every class present in test
