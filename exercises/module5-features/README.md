@@ -34,7 +34,7 @@ Run top to bottom; stop at every **Question** cell:
 ### A2. Your fan data (`notebooks/02_fan_features.ipynb`)
 
 1. Export your dataset from EI Studio: **Data acquisition → ⋮ → Export data** (JSON) — or Dashboard → export. Unzip into `notebooks/Data/fan/`. The notebook has loaders for both the EI JSON sample format and plain CSV.
-2. Window your recordings (200 samples @ 100 Hz, 50 % overlap) and reuse `compute_features()` from A1.
+2. Window your recordings (500 samples @ 250 Hz, 50 % overlap) and reuse `compute_features()` from A1.
 3. **New — spectral:** compute the FFT of `normal` windows; find the 1× RPM fundamental and check it against your `NOTES.md` nominal RPM (`RPM/60` Hz). Then compute **5 × 10 Hz band energies** per axis.
 4. Plot per-class feature distributions (boxplots) for: `std`, `rms`, `kurtosis`, `zero-crossings`, each band energy. Which features separate which states?
 5. Quick RF + feature importance on the full set (time + spectral).
