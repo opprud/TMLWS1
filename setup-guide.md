@@ -77,20 +77,20 @@ pip install numpy pandas matplotlib scikit-learn jupyterlab emlearn tensorflow
 
 Any of: PlatformIO's built-in monitor, `screen`, PuTTY, or the [Serial Studio](https://serial-studio.github.io/) plotter for visualising live sensor data.
 
-## 5b. Optional — CMSIS-DSP for the FFT timing comparison (Module 5)
+## 5b. CMSIS-DSP for the FFT timing comparison (Module 5)
 
-Only needed if you want to run the **`cmsis`** build of `module5-features/features-c`
-that races ARM's hardware FFT against the plain-C DFT. The default `naive` build needs
-none of this. Fetch the ARM source next to the committed glue manifest:
+**Nothing to install.** CMSIS-DSP is vendored in the repo, so the `cmsis` build of
+`module5-features/features-c` — which races ARM's hardware FFT against the plain-C
+DFT — works offline:
 
 ```bash
 cd exercises/module5-features/features-c
-git clone --depth 1 --branch v1.16.2 https://github.com/ARM-software/CMSIS-DSP /tmp/CMSIS-DSP
-cp -r /tmp/CMSIS-DSP/Source /tmp/CMSIS-DSP/Include lib/CMSIS-DSP/
 pio run -e cmsis                 # should compile clean; -e naive never needs this
 ```
 
-The fetched tree is gitignored (Apache-2.0; only `lib/CMSIS-DSP/library.json` is tracked).
+Only the FFT path is committed (Apache-2.0, upstream v1.16.2, subsetted but
+unmodified). If this build fails, the `naive` env is a complete fallback — you lose
+only the head-to-head timing, not any of the feature validation.
 
 ## 6. Pre-course checklist
 

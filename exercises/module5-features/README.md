@@ -74,27 +74,47 @@ pio device monitor              # 115200 baud
 > - **`cmsis`** — the real ARM CMSIS-DSP hardware FFT (`arm_rfft_fast_f32`), which
 >   also runs the naive DFT alongside it so you can **compare runtimes** (B4).
 
-### B1b. Optional: real CMSIS-DSP FFT (the runtime comparison)
+### B1b. The CMSIS-DSP FFT build (the runtime comparison)
 
-The raw `ARM-software/CMSIS-DSP` repo is **not** a PlatformIO-packaged library (its
-`library.json` has no `srcFilter`), so putting it in `lib_deps` makes LDF try to
-compile `Examples/.../startup_ARMCM*.c` and fail — and the Adafruit nRF52 BSP ships
-CMSIS *core* only, no DSP math lib to link. We solve this by vendoring a trimmed
-CMSIS-DSP into `lib/CMSIS-DSP/`: the glue `library.json` (committed) compiles only
-the two umbrella files needed for the FFT, and you fetch the ARM source once:
+**Nothing to install — CMSIS-DSP is vendored in `lib/CMSIS-DSP/`:**
 
 ```bash
-cd features-c
-# clone upstream to a temp dir, then drop only Source/ + Include/ next to our
-# committed lib/CMSIS-DSP/library.json (which supplies the srcFilter glue):
-git clone --depth 1 --branch v1.16.2 https://github.com/ARM-software/CMSIS-DSP /tmp/CMSIS-DSP
-cp -r /tmp/CMSIS-DSP/Source /tmp/CMSIS-DSP/Include lib/CMSIS-DSP/
-
 pio run -e cmsis -t upload      # real CMSIS-DSP FFT + timing harness
 ```
 
-The fetched `Source/`/`Include/` are gitignored (only `library.json` is tracked).
-CMSIS-DSP is Apache-2.0. The `naive` env never touches any of this.
+Only the FFT path is committed (115 files, 6.6 MB: `Include/`,
+`Source/TransformFunctions/`, `Source/CommonTables/`) — not the ~79 MB of
+examples, tests and Python wrappers in the upstream repo. Apache-2.0, upstream
+**v1.16.2**, subsetted but unmodified; `lib/CMSIS-DSP/LICENSE` travels with it.
+
+> **Why it is vendored rather than fetched.** The raw `ARM-software/CMSIS-DSP`
+> repo is *not* a PlatformIO-packaged library (its `library.json` has no
+> `srcFilter`), so putting it in `lib_deps` makes LDF try to compile
+> `Examples/.../startup_ARMCM*.c` and fail — and the Adafruit nRF52 BSP ships
+> CMSIS *core* only, with no DSP math library to link against. Our glue
+> `lib/CMSIS-DSP/library.json` supplies the missing `srcFilter`, compiling just
+> the two umbrella translation units the FFT needs:
+>
+> ```json
+> "srcFilter": ["-<*>",
+>               "+<Source/TransformFunctions/TransformFunctions.c>",
+>               "+<Source/CommonTables/CommonTables.c>"]
+> ```
+>
+> It is committed rather than cloned at setup so the `cmsis` build works with no
+> network — Module 5's headline result depends on this env, which is too
+> important to gate behind a clone on a locked-down laptop.
+
+To refresh it from upstream (not needed for the course):
+
+```bash
+git clone --depth 1 --branch v1.16.2 https://github.com/ARM-software/CMSIS-DSP /tmp/CMSIS-DSP
+cp -r /tmp/CMSIS-DSP/Source /tmp/CMSIS-DSP/Include lib/CMSIS-DSP/
+```
+
+`.gitignore` keeps everything outside the three needed directories out of the
+repo, so the extra ~79 MB never gets committed by accident. The `naive` env
+never touches any of this.
 
 The firmware computes features on a **deterministic synthetic golden window** (25 Hz + 40 Hz sines + a small 3.1 Hz sine — the exact same formula exists in the validation script) and prints (the `naive` env):
 

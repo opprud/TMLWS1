@@ -4,7 +4,28 @@
 .vscode/launch.json
 .vscode/ipch
 
-# CMSIS-DSP is fetched at setup (see README "Optional: real CMSIS-DSP FFT").
-# Commit only the glue manifest; the fetched ARM source tree stays local.
+# CMSIS-DSP (Apache-2.0, upstream v1.16.2) is VENDORED, not fetched: the `cmsis`
+# build must work with no network and no extra setup step, because Module 5's
+# headline result (naive DFT vs hardware FFT) depends on it.
+#
+# Only the FFT path is committed — Include/ + Source/TransformFunctions/ +
+# Source/CommonTables/ = 115 files, 6.6 MB of source, ~1.5 MB in git. The other
+# ~79 MB of the upstream clone (Examples/, Testing/, PythonWrapper/, dsppp/,
+# ComputeLibrary/, Documentation/) stays out. The tree is subsetted but
+# otherwise unmodified; LICENSE is committed alongside as Apache-2.0 requires.
+#
+# Directories must be un-ignored before their contents, hence the two-step
+# Source/ dance below.
 lib/CMSIS-DSP/*
 !lib/CMSIS-DSP/library.json
+!lib/CMSIS-DSP/LICENSE
+!lib/CMSIS-DSP/Include/
+!lib/CMSIS-DSP/Source/
+lib/CMSIS-DSP/Source/*
+!lib/CMSIS-DSP/Source/TransformFunctions/
+!lib/CMSIS-DSP/Source/CommonTables/
+
+# CommonTables.c (the umbrella the srcFilter compiles) includes only the f32/MVE
+# tables; the f16 sources are dead weight for us.
+lib/CMSIS-DSP/Source/CommonTables/*_f16.c
+lib/CMSIS-DSP/Source/CommonTables/CommonTablesF16.c
