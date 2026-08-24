@@ -41,18 +41,18 @@ Set expectations against the industry instinct that the model is the interesting
 
 | Signal | Bandwidth of interest | Our fs |
 |---|---|---|
-| Fan vibration | ~20–40 Hz fundamental + harmonics | **50–100 Hz** |
+| Fan vibration | ~20–40 Hz fundamental + harmonics | **250 Hz** |
 | Fan acoustics | up to ~8 kHz | **16 kHz** |
 
 <!--
-Crash course, slide 1 of 2. Nyquist in one sentence: sample at fs, and only content below fs/2 is faithfully captured. Ground it in the fan: a 120 mm fan spins around 1000-2500 RPM depending on model and voltage, so a ~20-40 Hz fundamental — 7 blades put blade-pass around 140-280 Hz. At 100 Hz sampling we get the rotation fundamental (and, for slower fans, its first harmonic) in vibration; the acoustic side at 16 kHz captures everything a fan meaningfully emits. These are the two rates hard-coded in the exercises, now you know where they come from.
+Crash course, slide 1 of 2. Nyquist in one sentence: sample at fs, and only content below fs/2 is faithfully captured. Ground it in the fan: a 120 mm fan spins around 1000-2500 RPM depending on model and voltage, so a ~20-40 Hz fundamental — 7 blades put blade-pass around 140-280 Hz. At 250 Hz sampling (Nyquist 125 Hz) we get the rotation fundamental and several harmonics in vibration, but blade-pass is still above Nyquist and folds back — that is deliberate, and it is the aliasing example on the next slide. The acoustic side at 16 kHz captures everything a fan meaningfully emits. These are the two rates hard-coded in the exercises, now you know where they come from. If someone asks why not simply sample faster: the data forwarder over 115200 baud is the bottleneck — 250 Hz x 3 axes is already ~39% of the link.
 -->
 
 ---
 
 ## Aliasing — the signal that lies
 
-- A 60 Hz vibration sampled at 100 Hz **shows up as 40 Hz**. Plausible. Wrong.
+- Our fan's **175 Hz blade-pass**, sampled at 250 Hz, **shows up as 75 Hz**. Plausible. Wrong.
 - You cannot detect aliasing after the fact — the data looks *fine*
 - Defenses:
   - sample comfortably above 2× the highest *real* frequency
@@ -60,7 +60,7 @@ Crash course, slide 1 of 2. Nyquist in one sentence: sample at fs, and only cont
   - sanity-check: does the spectrum move as expected when you change the fan speed?
 
 <!--
-The horror-story slide. Work the example: 60 Hz real, 100 Hz sampling, Nyquist at 50 — the 60 Hz folds to 40 Hz, indistinguishable from a genuine 40 Hz component. An ML model will happily learn aliased features; they may even "work" until fan speed changes shift the folding and everything breaks silently in production. The practical defense on our rig is the sanity check: change the fan's real speed and verify spectral peaks move the *right* way. If a peak moves the wrong direction as RPM rises, you're staring at an alias. Whiteboard the folding diagram if faces look uncertain.
+The horror-story slide. Work the example on our own rig: 7 blades x 25 Hz rotation = 175 Hz blade-pass, 250 Hz sampling, Nyquist at 125 — the 175 Hz folds to 250-175 = 75 Hz, landing mid-band and indistinguishable from a genuine 75 Hz component. This is not hypothetical: it is in the data they record this afternoon, which is why Module 5's spectra are read with the fundamental in mind, not every peak taken at face value. An ML model will happily learn aliased features; they may even "work" until fan speed changes shift the folding and everything breaks silently in production. The practical defense on our rig is the sanity check: change the fan's real speed and verify spectral peaks move the *right* way. If a peak moves the wrong direction as RPM rises, you're staring at an alias. Whiteboard the folding diagram if faces look uncertain.
 -->
 
 ---
@@ -69,7 +69,7 @@ The horror-story slide. Work the example: 60 Hz real, 100 Hz sampling, Nyquist a
 
 - Models don't eat endless streams — they eat **fixed-size windows**
 - Window length = how much context the model sees per decision
-  - fan vibration @ 100 Hz: 1–2 s windows → 100–200 samples × 3 axes
+  - fan vibration @ 250 Hz: 1–2 s windows → 250–500 samples × 3 axes
   - audio @ 16 kHz: 1 s → 16,000 samples
 - **Overlap** (e.g. 50%) = more training windows from the same recording
 - Window length is a *hyperparameter you choose at data-collection time*
@@ -152,7 +152,7 @@ It's just CSV over serial. Really.
 - `edge-impulse-data-forwarder` → login → name axes `accX,accY,accZ` → done
 
 <!--
-The whole protocol on one slide: numbers, commas, newline, repeat — at a steady rate. The CLI times your lines to deduce frequency (it will announce "detected 3 axes at 100 Hz") and forwards windows to Studio. Two implications: jittery timing = wrongly detected rate = distorted data, hence the firmware uses a micros()-based scheduler rather than naive delay(10); and the axis names you type at first login stick with the project — use accX/accY/accZ consistently so impulse blocks stay readable.
+The whole protocol on one slide: numbers, commas, newline, repeat — at a steady rate. The CLI times your lines to deduce frequency (it will announce "detected 3 axes at 250 Hz") and forwards windows to Studio. Two implications: jittery timing = wrongly detected rate = distorted data, hence the firmware uses a micros()-based scheduler rather than naive delay(4); and the axis names you type at first login stick with the project — use accX/accY/accZ consistently so impulse blocks stay readable.
 -->
 
 ---
@@ -163,11 +163,12 @@ The whole protocol on one slide: numbers, commas, newline, repeat — at a stead
 
 | Stream | Rate | Bytes/s | Verdict |
 |---|---|---|---|
-| Accel 3-axis CSV | 50 Hz | ~900 | 😌 8% of budget |
 | Accel 3-axis CSV | 100 Hz | ~1,800 | 🙂 16% |
+| Accel 3-axis CSV | **250 Hz — our rate** | ~4,500 | 😬 39% |
+| Accel 3-axis CSV | 500 Hz | ~9,000 | 🔥 78% — drops begin |
 | Audio 16 kHz × 16-bit | raw | 32,000 | 💀 3× over budget |
 
-Rule: keep the forwarder ≤ ~100 Hz × 3 axes at 115200 (or raise the baud).
+Rule: at 115200 the forwarder tops out near **250 Hz × 3 axes**. Faster ⇒ raise the baud.
 
 <!--
 The arithmetic that dictates our architecture. Walk it: 115200 baud minus framing is ~11.5 KB/s. Fifty-hertz accel CSV uses under a tenth of that — comfortable. Raw 16 kHz audio needs 32 KB/s before we even ASCII-encode it — the pipe is three times too small, full stop. Hence two different pipelines: live streaming for accel, record-to-RAM-then-bulk-dump for audio, where transfer can take longer than the recording because nothing is real-time. This is also why the old course streamed audio over WiFi TCP — the Photon2 had WiFi; our board doesn't, so RAM buffering is the way.
@@ -178,11 +179,13 @@ The arithmetic that dictates our architecture. Walk it: 115200 baud minus framin
 ## Accel forwarder — firmware architecture
 
 ```
-LIS3DH @ 100 Hz ──► micros()-scheduled loop ──► Serial.print "x,y,z\r\n"
+LIS3DH ODR 400 Hz ──► polled at 250 Hz ──► Serial.print "x,y,z\r\n"
 ```
 
-- Pacing by **absolute deadline** (`next += 20000 µs`), not `delay(20)`
-  → no drift, no jitter, forwarder detects a clean 100 Hz
+- Pacing by **absolute deadline** (`next += 4000 µs`), not `delay(4)`
+  → no drift, no jitter, forwarder detects a clean 250 Hz
+- **ODR > polling rate**, always — a 100 Hz ODR polled at 250 Hz returns each
+  sample ~2.5× (a stair-stepped fake that looks perfectly valid)
 - Units: m/s² (multiply g by 9.80665 — EI convention)
 
 <!--
@@ -196,7 +199,7 @@ The forwarder firmware in one diagram — it's module 2's accel-read plus a disc
 **`exercises/module3-data-forwarding/accel-forwarder/`**
 
 - Flash the forwarder → **close the serial monitor** → run `edge-impulse-data-forwarder`
-- Studio should report **100 Hz, 3 axes**; name them `accX, accY, accZ`
+- Studio should report **250 Hz, 3 axes**; name them `accX, accY, accZ`
 - Record ~5 samples each: `circle`, `updown`, `idle`
 - **Done when:** you can *see* the difference between gestures in the raw waveform
 
@@ -270,7 +273,7 @@ Studio's data-acquisition view, from the old anomaly lab's fresh screenshots. Ev
 
 ## What "good" first data looks like
 
-- Forwarder: Studio shows a steady **100 Hz**, 3 axes, no gaps
+- Forwarder: Studio shows a steady **250 Hz**, 3 axes, no gaps
 - Wave the board in circles → smooth sinusoids; still → flat + gravity on one axis
 - Mic: WAV plays back cleanly, speech is intelligible, no ticking (= lost buffers)
 - `describe()` sanity: means near 0/0/9.8 m/s² at rest
@@ -285,7 +288,7 @@ Acceptance criteria for the lab — concrete, checkable. The gravity check is th
 
 Both checkpoints done? Check yourself out:
 
-- [ ] Forwarder streams: Studio shows **100 Hz, 3 axes, no gaps**
+- [ ] Forwarder streams: Studio shows **250 Hz, 3 axes, no gaps**
 - [ ] ≥ 5 labelled samples each: `circle`, `updown`, `idle`
 - [ ] ≥ 1 audio clip recorded, converted, **listened to**, uploaded
 - [ ] You clicked into raw samples in Studio and actually *looked*
@@ -293,7 +296,7 @@ Both checkpoints done? Check yourself out:
 Goal: **both sensor types, labelled, visible in your Studio project.**
 
 <!--
-Lab hand-off. The gesture labels are deliberately the old course's gesture-collection exercise reborn — circle, updown, idle are easy to perform repeatably and unmistakable in the waveform, perfect pipeline-validation data. The data itself is disposable; the pipeline is the deliverable, because tomorrow morning the identical flow runs against the fan where re-recording costs real time. Checklist for done: forwarder streaming at detected 100 Hz, at least a few labelled samples of each gesture, one audio clip you've actually listened to, everything visible in Studio. Pairs are fine — one board streams while the other laptop preps the mic track.
+Lab hand-off. The gesture labels are deliberately the old course's gesture-collection exercise reborn — circle, updown, idle are easy to perform repeatably and unmistakable in the waveform, perfect pipeline-validation data. The data itself is disposable; the pipeline is the deliverable, because tomorrow morning the identical flow runs against the fan where re-recording costs real time. Checklist for done: forwarder streaming at detected 250 Hz, at least a few labelled samples of each gesture, one audio clip you've actually listened to, everything visible in Studio. Pairs are fine — one board streams while the other laptop preps the mic track.
 -->
 
 ---
@@ -303,7 +306,7 @@ Lab hand-off. The gesture labels are deliberately the old course's gesture-colle
 | Symptom | Fix |
 |---|---|
 | Forwarder: "no valid sensor readings" | close the serial monitor first! One port, one owner |
-| Detected rate ≠ 100 Hz | timing jitter — use the deadline scheduler, not `delay()` |
+| Detected rate ≠ 250 Hz | timing jitter — use the deadline scheduler, not `delay()`; a rate stuck near 100 Hz means the LIS3DH ODR is the limit, not your loop |
 | Forwarder asks to log in every time | `edge-impulse-data-forwarder --clean` re-pick project |
 | WAV sounds like a chipmunk | rate mismatch — dump was not 16 kHz, check `--rate` |
 | Upload lands unlabeled | `--label` flag or rename file to `label.xx.wav` |

@@ -29,9 +29,9 @@ from sklearn.model_selection import GroupShuffleSplit
 import emlearn
 
 # --- Keep in sync with firmware (src/main.cpp) --------------------------------
-SAMPLE_RATE_HZ = 100          # VERIFY: match the rate used in Modules 4-5
-WINDOW = 200                  # samples per window (2 s)
-HOP = 100                     # 50 % overlap
+SAMPLE_RATE_HZ = 250          # course-wide rate (Module 3 forwarder SAMPLE_RATE_HZ)
+WINDOW = 500                  # samples per window (2 s)
+HOP = 250                     # 50 % overlap -> one prediction per second
 N_FEATURES = 13
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data", "raw")

@@ -1,8 +1,8 @@
 /*
  * Module 7.1 - Live fan-state classification on RAK4631 (nRF52840)
- * Random Forest (emlearn) on 13 statistical features, LIS3DH @ 100 Hz.
+ * Random Forest (emlearn) on 13 statistical features, LIS3DH polled at 250 Hz.
  *
- * Pipeline: LIS3DH (RAK1904, slot A, I2C 0x18) -> 200-sample ring buffer
+ * Pipeline: LIS3DH (RAK1904, slot A, I2C 0x18) -> 500-sample ring buffer
  *           -> features.h (13 features) -> fan_model.h (emlearn RF) -> serial + LEDs
  *
  * Build:  see ../platformio.ini. Generate fan_model.h / test_windows.h with
@@ -21,9 +21,9 @@
 
 // ---- Configuration (MUST match train_rf.py) --------------------------------
 #define RUN_STATIC_TESTS 1          // 1 = validate golden windows on boot, then halt
-#define SAMPLE_RATE_HZ   100        // VERIFY: match Modules 4-5 acquisition rate
-#define WINDOW_LEN       200        // samples per inference window (2 s)
-#define HOP_LEN          100        // 50 % overlap -> one prediction per second
+#define SAMPLE_RATE_HZ   250        // course-wide rate; must match train_rf.py
+#define WINDOW_LEN       500        // samples per inference window (2 s)
+#define HOP_LEN          250        // 50 % overlap -> one prediction per second
 
 Adafruit_LIS3DH lis;
 
@@ -103,7 +103,9 @@ void setup() {
         while (1) { digitalWrite(LED_BLUE, !digitalRead(LED_BLUE)); delay(200); }
     }
     lis.setRange(LIS3DH_RANGE_4_G);
-    lis.setDataRate(LIS3DH_DATARATE_100_HZ);    // sensor ODR >= our sampling rate
+    lis.setDataRate(LIS3DH_DATARATE_400_HZ);    // ODR must EXCEED our 250 Hz polling
+                                                // rate, or every poll re-reads the same
+                                                // OUT registers (duplicated samples)
 
     Serial.println("Sampling live at 100 Hz, prediction every second...");
 }

@@ -8,7 +8,7 @@ There is no official EI firmware for the RAK4631 — and that's fine: the C++ de
 
 1. Open your Module 4 fan project at [studio.edgeimpulse.com](https://studio.edgeimpulse.com). Check **Data acquisition**: every class has train *and* test data (aim ≥ 80/20).
 2. **Create impulse** (dense-NN variant):
-   - *Time series data*: window size **2000 ms**, window increase **500 ms**, frequency **100 Hz** <!-- VERIFY: match your Module 4 acquisition settings -->
+   - *Time series data*: window size **2000 ms**, window increase **500 ms**, frequency **250 Hz** — these must match your Module 4 acquisition settings exactly (2000 ms at 250 Hz = 500 samples/axis)
    - Processing block: **Spectral Analysis** (all 3 axes)
    - Learning block: **Classification (Keras)**
 3. **Spectral features** tab: keep defaults first (low-pass filter, FFT length 64). Click *Save parameters* → *Generate features*. Inspect the **feature explorer** — your five classes should form visible clusters (Module 5 déjà vu: these are RMS + frequency-band features).

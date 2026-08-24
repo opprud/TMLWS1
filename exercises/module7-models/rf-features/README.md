@@ -100,7 +100,7 @@ All PASS? You have validated the entire chain except the sensor.
 ## Step 5 — Go live
 
 1. Set `RUN_STATIC_TESTS` to `0`, rebuild, upload.
-2. Mount the board on the fan (Module 4 rig). The firmware samples the LIS3DH at 100 Hz into a double buffer and classifies every second (200-sample window, 50 % overlap):
+2. Mount the board on the fan (Module 4 rig). The firmware samples the LIS3DH at 250 Hz (ODR 400 Hz) into a double buffer and classifies every second (500-sample window, 50 % overlap):
 
    ```
    normal     (conf n/a)  feat 812 us  model 42 us  total 854 us

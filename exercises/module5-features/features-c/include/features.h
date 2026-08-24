@@ -1,6 +1,9 @@
 // Module 5 Track B — feature extraction API
 // Conventions are locked to the Python side (notebooks/01+02, validate_features.py):
-//   * std  = POPULATION standard deviation (divide by N, like numpy.std default)
+//   * std  = POPULATION standard deviation (divide by N, like numpy.std default),
+//            computed two-pass as sum((x-mean)^2)/N. The one-pass E[x^2]-E[x]^2
+//            identity is NOT usable here: gravity makes E[x^2] ~400x the variance
+//            and float32 cancellation then costs ~4 significant digits.
 //   * zero crossings = count of i in [1, N-1] where (x[i]-mean)*(x[i-1]-mean) < 0
 //   * band energies  = Hann-windowed real FFT, |X[k]|^2 summed into n_bands equal
 //                      bands over [0, fs/2); DC bin (k=0) and Nyquist bin excluded.
@@ -10,8 +13,12 @@
 #pragma once
 #include <stdint.h>
 
-#define FEAT_FFT_N   256   // FFT length; also the golden-window length
-#define FEAT_N_BANDS 5     // 5 x 10 Hz bands at fs = 100 Hz
+// FFT length; also the golden-window length. Must match FFT_N in notebook 02
+// section 8 (which exports the golden windows) — power of two for the CMSIS rfft.
+#define FEAT_FFT_N   512
+// Bands are always fs/2 split into FEAT_N_BANDS equal slices, so their width
+// follows the sample rate: 25 Hz each at fs = 250 Hz (the Module 4 convention).
+#define FEAT_N_BANDS 5
 
 typedef struct {
     float mean;

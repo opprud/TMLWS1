@@ -26,7 +26,7 @@ Build the two data pipelines you'll use for the fan lab tomorrow:
 
 ## Part A — Accelerometer → data forwarder
 
-The firmware streams `x,y,z\r\n` CSV lines at a disciplined 100 Hz — the course-wide rate Modules 4–7 train on — paced by an absolute `micros()` deadline, because the forwarder *times your lines* to auto-detect the sample rate, and `delay(10)`-style pacing drifts.
+The firmware streams `x,y,z\r\n` CSV lines at a disciplined 250 Hz — the course-wide rate Modules 4–7 train on — paced by an absolute `micros()` deadline, because the forwarder *times your lines* to auto-detect the sample rate, and `delay(10)`-style pacing drifts. Note `setDataRate(LIS3DH_DATARATE_400_HZ)`: the sensor's output data rate must stay **above** the polling rate, or every poll re-reads the same OUT registers and you get each sample duplicated instead of new data.
 
 ### Steps
 
@@ -46,12 +46,12 @@ The firmware streams `x,y,z\r\n` CSV lines at a disciplined 100 Hz — the cours
    ```
 
    - log in with your EI account, select your project
-   - it detects the device and reports: **`Detected data frequency: 100Hz`**, 3 axes
+   - it detects the device and reports: **`Detected data frequency: 250Hz`**, 3 axes
    - name the axes: `accX, accY, accZ`
    - give the device a name (e.g. `rak4631-yourname`)
 
 5. In Studio → **Data acquisition**: your device appears under "Record new data". Set:
-   - Label: `circle` · Sample length: `5000` ms · Frequency: 100 Hz
+   - Label: `circle` · Sample length: `5000` ms · Frequency: 250 Hz
 6. Click **Start sampling**, and move the board in circles for 5 s. The sample appears in the list — click it and **look at the waveform**. Smooth sinusoids = good.
 7. Record ~5 samples each of three gestures: **`circle`**, **`updown`**, **`idle`** (board on the desk).
 8. Sanity checks:
@@ -60,7 +60,7 @@ The firmware streams `x,y,z\r\n` CSV lines at a disciplined 100 Hz — the cours
 
 ### Do the `TODO(student)` items in the firmware
 
-Rate verification, a 50 Hz down-rate experiment (halve `SAMPLE_RATE_HZ`, watch the forwarder re-detect), and the deadline-miss watchdog. Bandwidth context: 100 Hz × ~18 bytes ≈ 1.8 kB/s of the ~11.5 kB/s available at 115200 baud — keep total rate ≤ ~100 Hz × 3 axes, or raise the baud.
+Rate verification, a 125 Hz down-rate experiment (halve `SAMPLE_RATE_HZ`, watch the forwarder re-detect), and the deadline-miss watchdog. Bandwidth context: 250 Hz × ~18 bytes ≈ 4.5 kB/s of the ~11.5 kB/s available at 115200 baud — about 39 % of the link, so 250 Hz × 3 axes is close to the practical ceiling here. Go faster and you must raise the baud rate.
 
 ---
 
@@ -114,7 +114,7 @@ Start-up transient trimming, dump-time arithmetic, and finding the real RAM ceil
 
 ## Finish line checklist
 
-- [ ] Forwarder streams and Studio shows **100 Hz, 3 axes, no gaps**
+- [ ] Forwarder streams and Studio shows **250 Hz, 3 axes, no gaps**
 - [ ] ≥ 5 labelled samples each: `circle`, `updown`, `idle`
 - [ ] ≥ 1 audio clip recorded, converted, **listened to**, uploaded with a label
 - [ ] You clicked into raw samples in Studio and actually looked at them

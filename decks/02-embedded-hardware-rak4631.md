@@ -118,7 +118,7 @@ Assembly time — 5 minutes. Power off is real: hot-plugging modules can kill th
 - ST **LIS3DH**, 3-axis MEMS accelerometer
 - I²C address **0x18**, interrupt line on `WB_IO5`
 - Range: ±2/4/8/16 g — we use **±4 g**
-- Data rate: 1 Hz – 5.3 kHz — we use **50–100 Hz**
+- Data rate: 1 Hz – 5.3 kHz — we use **ODR 400 Hz, polled at 250 Hz**
 - Driver: **Adafruit LIS3DH** Arduino library (plus BusIO + Unified Sensor)
 
 ⚡ Gotcha: sensor slots are power-gated — drive **`WB_IO2` HIGH** first!
