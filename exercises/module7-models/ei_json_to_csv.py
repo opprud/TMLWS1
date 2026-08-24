@@ -111,7 +111,7 @@ def main():
             continue
 
         label = name.split(".")[0]
-        interval_ms = float(payload.get("interval_ms", 10))   # 10 ms = 100 Hz
+        interval_ms = float(payload.get("interval_ms", 4))    # 4 ms = 250 Hz
         ix, iy, iz = axis_columns(payload.get("sensors"))
 
         index = counters.get(label, 0)

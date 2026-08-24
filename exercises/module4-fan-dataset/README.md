@@ -6,7 +6,7 @@ Build a vibration data-acquisition rig from your WisBlock kit and a 120 mm PC fa
 
 ## Prerequisites
 
-- Working Module 3 setup: the **accel-forwarder** PlatformIO project (LIS3DH @ 100 Hz → comma-separated `x,y,z` over USB serial @ 115200). Do **not** rewrite it — reuse it as-is from `exercises/module3-*/accel-forwarder/`.
+- Working Module 3 setup: the **accel-forwarder** PlatformIO project (LIS3DH ODR 400 Hz, polled and streamed at 250 Hz → comma-separated `x,y,z` over USB serial @ 115200). Do **not** rewrite it — reuse it as-is from `exercises/module3-*/accel-forwarder/`.
 - `edge-impulse-data-forwarder` installed and logged in (see `setup-guide.md`).
 - An Edge Impulse project (create a fresh one: `fan-condition-monitoring`).
 - Hardware: RAK4631 on RAK19007 base, RAK1904 in **sensor slot A**, USB-C cable, 120 mm PC fan + 5 V/12 V supply, zip-ties, tape, a small weight (M3 nut or a coin), cardboard.
@@ -31,11 +31,12 @@ edge-impulse-data-forwarder
 
 - Select your `fan-condition-monitoring` project.
 - Name the axes exactly: `accX, accY, accZ` (keep this identical across the whole class).
-- **Expected output:** the forwarder detects a frequency of **≈ 100 Hz** (98–102 Hz is fine).
+- **Expected output:** the forwarder detects a frequency of **≈ 250 Hz** (245–255 Hz is fine).
 
 > **Troubleshooting**
 > - *No serial port found*: close PlatformIO's serial monitor (only one program can own the port). On macOS the port is `/dev/cu.usbmodem*`.
-> - *Detected frequency far from 100 Hz* (e.g. 60–80 Hz): your firmware paces sampling with `delay()`. Use the timer-driven Module 3 version.
+> - *Detected frequency far from 250 Hz* (e.g. 150–200 Hz): your firmware paces sampling with `delay()`, or the serial link cannot keep up. Use the timer-driven Module 3 version and check the deadline-miss counter.
+> - *Detected ≈ 250 Hz but the signal looks stair-stepped*: the LIS3DH ODR is below the polling rate — `setDataRate(LIS3DH_DATARATE_400_HZ)`, not 100 Hz, or each sample is read ~2.5×.
 > - *Board not enumerating*: double-press RESET → bootloader mode → re-flash.
 > - *Forwarder connects to the wrong project*: run `edge-impulse-data-forwarder --clean` to re-select.
 
@@ -63,7 +64,7 @@ Target: **≥ 5 recordings × 20 s per state** (≥ 100 s/state → ≥ 50 two-s
 
 In EI Studio → **Data acquisition**:
 
-- Sample length: `20000` ms · Frequency: 100 Hz (auto) · Label: the state name, exactly as in the table.
+- Sample length: `20000` ms · Frequency: 250 Hz (auto) · Label: the state name, exactly as in the table.
 
 Procedure:
 
@@ -99,9 +100,9 @@ deviations:            <anything you changed mid-session>
 3. Inspect the **feature explorer** (3-D projection of all windows):
    - `off` should sit far from everything.
    - `scrape` and `imbalance` should form their own regions.
-   - `blocked` vs `normal` may overlap somewhat — that is expected at 100 Hz and is exactly what Module 5's spectral features attack. But if they are *identical*, strengthen the blockage now.
+   - `blocked` vs `normal` may overlap somewhat — that is expected in *amplitude* features and is exactly what Module 5's spectral features attack (a blockage shifts the RPM peak, which RMS cannot see). But if they are *identical*, strengthen the blockage now.
 4. Click outlier points — the explorer shows which recording/window they came from. Investigate: mislabelled? mount shifted? Delete or re-record bad files.
-5. On teh **Spectral features** page → FFT Bins, change to 256 → Save Parameters in new impulse→ *Generate features*.
+5. On the **Spectral features** page → FFT Bins, change to 256 → Save Parameters in new impulse → *Generate features*.
 6. Explore using the feature explorer again, is calss separation better ?
 
 
@@ -132,4 +133,4 @@ Tick every box before lunch — Modules 5/7/8 assume all of these:
 
 ## Optional extension — parallel audio
 
-Only if everything above is ✅: record the same five states with the RAK18000 PDM microphone (IO slot, DATA `WB_IO3`, CLK `WB_IO4`) using the Module 3 mic workflow (serial PCM dump → WAV → `edge-impulse-uploader`). Audio at 16 kHz captures blade-pass and flow noise that 100 Hz vibration cannot — you'll compare modalities on Day 3.
+Only if everything above is ✅: record the same five states with the RAK18000 PDM microphone (IO slot, DATA `WB_IO3`, CLK `WB_IO4`) using the Module 3 mic workflow (serial PCM dump → WAV → `edge-impulse-uploader`). Audio at 16 kHz captures blade-pass and flow noise that 250 Hz vibration sampling cannot (Nyquist = 125 Hz, and blade-pass sits at blades × RPM/60 ≈ 175 Hz) — you'll compare modalities on Day 3.

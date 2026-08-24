@@ -29,22 +29,36 @@ void time_features_compute(const float *x, int n, time_features_t *out)
 
     const float mean = sum / (float)n;
     const float mean_sq = sum_sq / (float)n;
-    float var = mean_sq - mean * mean;   // population variance, E[x^2] - E[x]^2
-    if (var < 0.0f) var = 0.0f;          // guard tiny negative from float rounding
 
     out->mean = mean;
-    out->std = sqrtf(var);
     out->rms = sqrtf(mean_sq);
     out->min = mn;
     out->max = mx;
 
-    // second (short) pass: zero crossings around the mean
+    // Second pass: variance about the mean, plus zero crossings (same loop).
+    //
+    // Do NOT compute the variance as E[x^2] - E[x]^2 here. Accelerometer windows
+    // carry gravity, so for this data E[x^2] ~= 93.9 while the variance is ~0.25:
+    // subtracting two nearly equal large float32 numbers throws away most of the
+    // significant digits (catastrophic cancellation), and the rounding accumulated
+    // in sum_sq — negligible relative to 93.9 — becomes a ~4e-4 relative error on
+    // the variance. That failed validation against numpy on a real fan window.
+    // Summing (x - mean)^2 keeps every term the size of the variance itself.
+    float sum_dev_sq = 0.0f;
     int zc = 0;
     for (int i = 1; i < n; i++) {
         if ((x[i] - mean) * (x[i - 1] - mean) < 0.0f) {
             zc++;
         }
     }
+    for (int i = 0; i < n; i++) {
+        const float d = x[i] - mean;
+        sum_dev_sq += d * d;
+    }
+    float var = sum_dev_sq / (float)n;    // population variance (/N, like numpy)
+    if (var < 0.0f) var = 0.0f;           // guard tiny negative from float rounding
+
+    out->std = sqrtf(var);
     out->zero_crossings = zc;
 }
 
@@ -105,7 +119,7 @@ int band_energies_cmsis(const float *x, int n, float fs,
     if (n != FEAT_FFT_N || n_bands <= 0 || bands == NULL) return -1;
 
     if (!s_rfft_ready) {
-        // Needs the N=256 rfft twiddle tables compiled into CommonTables.
+        // Needs the FEAT_FFT_N-point rfft twiddle tables compiled into CommonTables.
         if (arm_rfft_fast_init_f32(&s_rfft, FEAT_FFT_N) != ARM_MATH_SUCCESS) return -1;
         s_rfft_ready = true;
     }

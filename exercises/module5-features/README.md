@@ -35,18 +35,18 @@ Run top to bottom; stop at every **Question** cell:
 
 1. Export your dataset from EI Studio: **Data acquisition → ⋮ → Export data** (JSON) — or Dashboard → export. Unzip into `notebooks/Data/fan/`. The notebook has loaders for both the EI JSON sample format and plain CSV.
 2. Window your recordings (500 samples @ 250 Hz, 50 % overlap) and reuse `compute_features()` from A1.
-3. **New — spectral:** compute the FFT of `normal` windows; find the 1× RPM fundamental and check it against your `NOTES.md` nominal RPM (`RPM/60` Hz). Then compute **5 × 10 Hz band energies** per axis.
+3. **New — spectral:** compute the FFT of `normal` windows; find the 1× RPM fundamental and check it against your `NOTES.md` nominal RPM (`RPM/60` Hz). Then compute **5 equal band energies over `[0, FS/2)`** per axis — 5 × 25 Hz spanning 0–125 Hz at FS = 250 Hz.
 4. Plot per-class feature distributions (boxplots) for: `std`, `rms`, `kurtosis`, `zero-crossings`, each band energy. Which features separate which states?
 5. Quick RF + feature importance on the full set (time + spectral).
 6. **Decide your on-device feature set** (3–7 per axis) and justify each choice in one sentence (importance / cost / redundancy).
-7. Export one 256-sample window per class to a C header with the provided `window_to_c_array()` helper → you'll use it in Track B.
+7. Export one **512**-sample window per class to a C header with the provided `window_to_c_array()` helper → you'll use it in Track B. 512 = `FEAT_FFT_N` in `features-c/include/features.h`; change one and you must change the other.
 
 **Expected output:** the 1× RPM peak within ~10 % of the datasheet value; `imbalance` dominating the band containing 1× RPM; `scrape` raising kurtosis and all bands; `blocked` shifting energy between neighbouring bands.
 
 > **Troubleshooting (Track A)**
 > - *EI export JSON won't parse*: you exported CBOR. Re-export as JSON, or use the CSV export path in the notebook.
-> - *Fundamental peak not where expected*: check the forwarder really ran at 100 Hz (Module 4 checklist); a wrong `fs` scales every frequency.
-> - *Peak at exactly 50 Hz*: that's mains hum or the 2× harmonic sitting at Nyquist — look at the second-largest peak.
+> - *Fundamental peak not where expected*: check the forwarder really ran at 250 Hz (Module 4 checklist) and that `FS` in the notebook matches; a wrong `fs` scales every frequency linearly.
+> - *Peak at exactly 50 Hz (or 100 Hz)*: mains hum and its harmonic coupling into the rig, not the fan. At FS = 250 Hz these are genuinely resolved (Nyquist = 125 Hz) rather than aliased — confirm by checking the peak does **not** move when you change fan speed, then look at the second-largest peak.
 > - *`blocked` identical to `normal` in every feature*: your blockage was too gentle; re-record that class (Module 4 §6).
 
 ---
@@ -56,7 +56,7 @@ Run top to bottom; stop at every **Question** cell:
 A PlatformIO project for the RAK4631 that computes, on-device:
 
 - time-domain: **mean, std (population), RMS, min, max, zero-crossings** — one pass, no malloc
-- frequency-domain: **256-point FFT → 5 × 10 Hz band energies** (plain-C DFT by default; real CMSIS-DSP is an optional opt-in, see below)
+- frequency-domain: **512-point FFT → 5 × 25 Hz band energies** at FS = 250 Hz (plain-C DFT by default; real CMSIS-DSP is an optional opt-in, see below)
 - execution time of each stage via `micros()`
 
 ### B1. Build & flash
@@ -100,7 +100,7 @@ The firmware computes features on a **deterministic synthetic golden window** (2
 
 ```
 FEATURES_BEGIN
-window=synthetic n=256 fs=100.0
+window=synthetic n=512 fs=250.0
 axis=x mean=... std=... rms=... min=... max=... zc=...
 axis=x band0=... band1=... band2=... band3=... band4=...
 timing stats_us=... fft_us=...
@@ -120,7 +120,9 @@ fft_agree max_rel=...           # naive vs CMSIS band energies — must be ~1e-6
 python validate_features.py --port /dev/cu.usbmodemXXXX      # or COMx / /dev/ttyACM0
 ```
 
-The script generates the identical window in numpy, computes the identical features, parses the device output and prints a PASS/FAIL table.
+On macOS use the `/dev/cu.*` node, **not** `/dev/tty.*` — pyserial blocks on the tty node waiting for carrier detect.
+
+The script generates the identical window in numpy, computes the identical features, parses the device output and prints a PASS/FAIL table. It takes `fs` and `n` from the device's own `n=... fs=...` line (override with `--fs` / `--n`) and aborts if they disagree with what it is about to compute — the band edges are `(fs/2)/5`, so a silent `fs` mismatch would fail every `band*` row while all six time-domain rows still pass. **That failure signature — time-domain PASS, all bands FAIL — means the two sides disagree about `fs`, not that your FFT is wrong.**
 
 **Expected output:** every feature `PASS` with relative error `< 1e-4`. Band energies may show slightly larger error (`< 1e-3`) — float32 FFT vs float64 numpy.
 
@@ -146,17 +148,27 @@ The script generates the identical window in numpy, computes the identical featu
 
 Flash the **`cmsis`** env (B1b) and read the two FFT numbers from one window:
 
-| Stage | µs @ 64 MHz | % of a 2 s window |
+| Stage | µs @ 64 MHz | % of a 2.048 s window |
 |---|---|---|
-| time-domain stats (256 samples, 1 axis) | | |
-| 256-pt band energies — **naive DFT** (`fft_naive_us`) | | |
-| 256-pt band energies — **CMSIS-DSP FFT** (`fft_cmsis_us`) | | |
+| time-domain stats (512 samples, 1 axis) | | |
+| 512-pt band energies — **naive DFT** (`fft_naive_us`) | | |
+| 512-pt band energies — **CMSIS-DSP FFT** (`fft_cmsis_us`) | | |
 
 The `fft_agree max_rel` line proves both backends compute the *same* band energies
 (~1e-6) — so the only difference you're paying for is speed. The naive O(N²) DFT is
 roughly two orders of magnitude slower than the hardware `arm_rfft_fast_f32`; that
-gap is the reason real firmware uses CMSIS-DSP. (The class-default `naive` env still
-runs fine — it's just the slow number in this table.)
+gap is the reason real firmware uses CMSIS-DSP.
+
+At N = 512 the naive DFT measures **~6.8 s per window** — it is now *3.3× slower than
+real time* for 2.048 s of data, and it overruns the firmware's 5 s auto-repeat, so the
+`naive` env just runs back-to-back DFTs. Going 256 → 512 cost 4× (O(N²)); that is the
+headline number for this exercise. The `naive` env is still the right default for
+*correctness* work — it needs no external library — but at this window length only the
+CMSIS build could keep up with a live sensor.
+
+> Measurement caveat: `micros()` on the Adafruit nRF52 core is RTC-backed at
+> 32.768 kHz, i.e. **~30 µs granularity** — that is why `stats_us` reads `0` for a
+> ~30 µs pass. To time it, loop the call 100× and divide, or use `DWT->CYCCNT`.
 
 > **Troubleshooting (Track B)**
 > - *Build fails around `arm_math.h` / CMSIS-DSP*: you're on `-e cmsis` but haven't fetched the source — see B1b. The default `-e naive` build needs no CMSIS at all.

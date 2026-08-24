@@ -97,8 +97,7 @@ is the #1 silent failure.
 ## Recap — the fan dataset
 
 - 3-axis vibration from the RAK1904 (LIS3DH, sensor slot A, I²C `0x18`)
-- Sampled at **100 Hz**, windowed into **200-sample windows** (2 s), 50 % overlap
-  <!-- TODO: align these numbers with what was actually chosen in Modules 4–5 -->
+- Sampled at **250 Hz**, windowed into **500-sample windows** (2 s), 50 % overlap
 - Five machine states = five class labels
 - Train/test split done **by recording session**, not by window — no leakage
 
@@ -230,8 +229,8 @@ This is "golden sample testing" and it saves hours of on-target debugging.
 ## Golden test vectors
 
 ```c
-// one 200-sample window of a known 'imbalance' recording, from CSV
-static const float test_imbalance[200][3] = {
+// one 500-sample window of a known 'imbalance' recording, from CSV
+static const float test_imbalance[500][3] = {
   { 0.012f, -0.981f, 0.033f },
   { 0.018f, -0.976f, 0.041f },
   /* ... exported by train_rf.py ... */
@@ -350,7 +349,7 @@ Same pipelining trick: EI's training is server-side, so queue it before the CNN 
 
 ![bg right:22% h:550](../brightspace-export/assignment/ifee4da03-fe98-4b51-b18a-d32bec349f3d/cnn_model_3_6_8.keras.png)
 
-- Input: raw **200 × 3** window — no handcrafted features
+- Input: raw **500 × 3** window — no handcrafted features
 - `Conv1D(3, k=3) → MaxPool → Conv1D(6, k=5) → MaxPool → Flatten → Dense 8 → softmax`
 - Kernels = **learned** feature extractors (period detectors, spike detectors…)
 - Old-course grid search: small models won — 3 filters/16 units ≈ 80 %, 8 filters/64 units *worse* (overfit)

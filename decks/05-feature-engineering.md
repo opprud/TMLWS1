@@ -20,7 +20,7 @@ Module 4 gave everyone a labelled 5-class fan dataset. This module answers: what
 
 # Why features at all?
 
-- A 2 s window = 200 samples × 3 axes = **600 raw numbers**
+- A 2 s window = 500 samples × 3 axes = **1,500 raw numbers**
 - Small models (logistic regression, random forest, small MLP) want **few, informative inputs**
 - A feature = a *summary statistic* that compresses a window into one number
   - `std(x)` ≈ "how much does it shake?"
@@ -239,7 +239,7 @@ This is the motivation slide for the new spectral section. The old WISDM exercis
 - DFT: any window = sum of sinusoids; FFT computes it in $O(N\log N)$
 - Input: $N$ real samples at $f_s$ → output: $N/2$ complex **bins**
 - Bin $k$ ↔ frequency $k \cdot f_s / N$ — resolution $= f_s/N$
-  - 256 samples @ 100 Hz → **0.39 Hz/bin**, bins 0–50 Hz
+  - 512 samples @ 250 Hz → **0.49 Hz/bin**, bins 0–125 Hz
 - Magnitude $|X_k|$ = "how much of frequency $k$", phase usually discarded
 - Multiply by a **window function** (Hann) first to reduce spectral leakage
 
@@ -250,7 +250,7 @@ freqs = np.fft.rfftfreq(len(x), d=1/fs)
 ```
 
 <!--
-Keep the math light — engineers here have seen FFTs, they need the bookkeeping refreshed: bin index to Hz conversion, rfft returning N/2+1 bins, DC in bin 0 (that's your mean — drop or keep consciously). Leakage demo idea in the notebook: FFT of a 25.2 Hz sine with/without Hann window. On-device we'll use 256-point FFT on the 200-sample window zero-padded to 256 (or record 2.56 s windows — the exercise uses 256 samples directly).
+Keep the math light — engineers here have seen FFTs, they need the bookkeeping refreshed: bin index to Hz conversion, rfft returning N/2+1 bins, DC in bin 0 (that's your mean — drop or keep consciously). Leakage demo idea in the notebook: FFT of a 25.2 Hz sine with/without Hann window. On-device we'll use a 512-point FFT (power of two, required by arm_rfft_fast_f32) on 512 consecutive samples = 2.048 s at 250 Hz — no zero-padding, so the C and Python sides see byte-identical data. Note the analysis windows in the notebook are 500 samples (exactly 2 s); the golden windows exported to C are 512. That mismatch is deliberate and worth naming out loud.
 -->
 
 ---
@@ -258,8 +258,9 @@ Keep the math light — engineers here have seen FFTs, they need the bookkeeping
 # Reading the fan spectrum
 
 - **1× RPM fundamental**: fan at 1500 RPM → 25 Hz peak
-- **Harmonics**: 2× (50 Hz — at our Nyquist edge!), 3×...
-- **Blade-pass**: blades × 1× (7 × 25 = 175 Hz) — *aliased/invisible at 100 Hz sampling*
+- **Harmonics**: 2× (50 Hz), 3× (75 Hz), 4× (100 Hz) — all comfortably inside Nyquist = 125 Hz
+- **Blade-pass**: blades × 1× (7 × 25 = 175 Hz) — *still above Nyquist: folds back to 75 Hz*,
+  landing exactly on the 3× harmonic at 1500 RPM. A peak there is two things at once.
 - Expectations per state:
 
 | State | Spectrum |
@@ -282,7 +283,7 @@ Cheapest useful spectral feature — sum magnitudes over frequency bands:
 
 $$ E_{band} = \sum_{k \in band} |X_k|^2 $$
 
-- Our layout at $f_s$=100 Hz, N=256: **5 bands × 10 Hz** (0–10, 10–20, 20–30, 30–40, 40–50)
+- Our layout at $f_s$=250 Hz, N=512: **5 bands × 25 Hz** (0–25, 25–50, 50–75, 75–100, 100–125)
 - Imbalance → energy piles into the band containing 1× RPM
 - Blockage → energy *moves between* neighbouring bands
 - Scrape → all bands rise
@@ -352,14 +353,15 @@ The one-pass variance formula (E[x²] − E[x]²) can lose precision for large o
 ```c
 #include "arm_math.h"
 arm_rfft_fast_instance_f32 S;
-arm_rfft_fast_init_f32(&S, 256);
+arm_rfft_fast_init_f32(&S, 512);
 arm_rfft_fast_f32(&S, input, output, 0);   // output: interleaved re/im
-arm_cmplx_mag_f32(output, mag, 128);       // -> 128 magnitude bins
+arm_cmplx_mag_f32(output, mag, 256);       // -> 256 magnitude bins
 ```
 
-- 256-point float FFT: well under a millisecond at 64 MHz
+- 512-point float FFT: milliseconds at 64 MHz
 - The exercise's `cmsis` build **measures this against the plain-C DFT** on the same
-  window — identical band energies, but the naive O(N²) DFT is **~100× slower**
+  window — identical band energies (`fft_agree max_rel` ~1e-6), but the naive O(N²)
+  DFT takes **6.8 s** for the same 512 samples
 - CMSIS-DSP also has one-call stats: `arm_mean_f32`, `arm_rms_f32`, `arm_std_f32` — compare against your loop!
 
 <!--
@@ -394,16 +396,21 @@ uint32_t dt = micros() - t0;
 Serial.printf("time features: %lu us\n", dt);
 ```
 
-- Typical (64 MHz M4F, N=256, per axis): stats ≈ tens of µs; **CMSIS FFT ≈ hundreds
-  of µs**, the **naive DFT ≈ tens of ms** (~100× — measure both with the `cmsis` env)
-- Duty cycle over a 2 s window: CMSIS FFT **≈ 0.1 %**; the naive DFT ~100× that — both
-  small, but the gap is why production firmware links the hardware FFT
+- Measured (64 MHz M4F, N=512, one axis): stats **below the 30 µs `micros()` resolution**;
+  the **naive $O(N^2)$ DFT ≈ 6.8 s** — it recomputes `cosf`/`sinf` per bin per sample
+- That is **3.3× slower than real time** for a 2.048 s window: the naive path cannot keep
+  up with the sensor at all. The CMSIS `arm_rfft_fast_f32` runs in milliseconds — you
+  measure both with the `cmsis` env and fill in the ratio yourself
+- Going N=256 → 512 cost **4×** on the naive path ($O(N^2)$) and ~2× on the FFT ($O(N\log N)$)
 - This headroom is *the* TinyML power story: compute briefly, sleep long
 
 <!--
 Fill the exact µs live from the cmsis-env serial output (fft_cmsis_us / fft_naive_us)
 if a board is on the bench; the order-of-magnitude contrast above is the takeaway
-either way. Naive 256-pt DFT is ~32k trig evals/axis → tens of ms on the M4F.
+either way. The naive 512-pt DFT is ~130k inner iterations with a cosf AND a sinf each
+(~260k trig evals/axis) and measures 6.8 s on our RAK4631 — worth letting that number
+land, because it is slower than real time. TODO: paste the measured fft_cmsis_us here
+once the cmsis env has been flashed on the bench board.
 -->
 
 <!--

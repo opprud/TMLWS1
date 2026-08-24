@@ -21,14 +21,14 @@ Welcome to Day 2. Yesterday you got the toolchain running, brought up the RAK463
 # Warm-up — four questions from Day 1
 
 1. Train/test split for sensor data: by **window** or by **recording session** — and why?
-2. A real **60 Hz** vibration sampled at 100 Hz shows up at what frequency?
-3. The data forwarder reports **62 Hz** instead of 100 Hz. Most likely cause?
+2. The fan's **175 Hz** blade-pass, sampled at 250 Hz, shows up at what frequency?
+3. The data forwarder reports **160 Hz** instead of 250 Hz. Most likely cause?
 4. On the nRF52840, where do a model's **weights** live — RAM or flash?
 
 *Two minutes with your neighbour, then we compare notes.*
 
 <!--
-Day-boundary retrieval — cheap and it works. Let pairs argue for two minutes, then collect answers cold. Answers: (1) by recording session — adjacent windows from one recording are near-duplicates, splitting by window leaks them into both sets and the accuracy becomes a lie (Module 1/3). (2) 40 Hz — it folds around Nyquist at 50 Hz; aliasing, and you can't detect it after the fact (Module 3). (3) delay()-based loop timing — jitter accumulates; use the absolute-deadline micros() scheduler (Module 3). (4) Flash (1 MB) holds the weights; RAM (256 KB) holds activations and buffers (Module 1, and the full story in Module 9). Anyone shaky on 1 or 3 gets a personal visit during this morning's lab — those two are exactly the mistakes that ruin today's dataset.
+Day-boundary retrieval — cheap and it works. Let pairs argue for two minutes, then collect answers cold. Answers: (1) by recording session — adjacent windows from one recording are near-duplicates, splitting by window leaks them into both sets and the accuracy becomes a lie (Module 1/3). (2) 75 Hz — 175 Hz folds around Nyquist at 125 Hz (250-175), landing mid-band where it is indistinguishable from a real 75 Hz component; aliasing, and you can't detect it after the fact (Module 3). (3) delay()-based loop timing — jitter accumulates; use the absolute-deadline micros() scheduler. A second plausible answer worth accepting at 250 Hz: the LIS3DH ODR is set at or below the polling rate, so the loop stalls on stale registers (Module 3). (4) Flash (1 MB) holds the weights; RAM (256 KB) holds activations and buffers (Module 1, and the full story in Module 9). Anyone shaky on 1 or 3 gets a personal visit during this morning's lab — those two are exactly the mistakes that ruin today's dataset.
 -->
 
 ---
@@ -74,7 +74,7 @@ One narrative arc: sensor data (M4) becomes features (M5), features become a dep
 - TinyML angle: analyse **at the sensor**, transmit only *state*, not raw waveforms
 
 <!--
-The audience works with pumps daily — they know them better than we do. Invite one example from the room: "what does a failing pump sound/feel like?" The TinyML value proposition: a LoRa node cannot stream 100 Hz × 3-axis raw data on a battery, but it can happily send "state=imbalance, confidence=0.93" once a minute. Jon Nordby's cattle-collar figure: on-sensor ML uses ~50x less power than streaming raw data (we revisit in Module 6).
+The audience works with pumps daily — they know them better than we do. Invite one example from the room: "what does a failing pump sound/feel like?" The TinyML value proposition: a LoRa node cannot stream 250 Hz × 3-axis raw data on a battery, but it can happily send "state=imbalance, confidence=0.93" once a minute. Jon Nordby's cattle-collar figure: on-sensor ML uses ~50x less power than streaming raw data (we revisit in Module 6).
 -->
 
 ---
@@ -152,15 +152,15 @@ This slide saves more model accuracy than any hyperparameter. A floppy mount att
 
 # Acquisition parameters
 
-- **Sample rate: 100 Hz** (LIS3DH configured for ±4 g)
-  - Nyquist = 50 Hz → captures the 20–40 Hz rotation fundamental
-  - Blade-pass frequency (blades × RPM/60 ≈ 140–280 Hz) is **above** Nyquist — we knowingly give it up
-- **Window length: 2 s** → 200 samples/axis; several rotation periods per window
+- **Sample rate: 250 Hz** (LIS3DH ODR 400 Hz, ±4 g — ODR must exceed the polling rate)
+  - Nyquist = 125 Hz → the 20–40 Hz rotation fundamental **and several harmonics**
+  - Blade-pass (blades × RPM/60 ≈ 140–280 Hz) still straddles Nyquist — we knowingly give it up, and it folds back into the band
+- **Window length: 2 s** → 500 samples/axis; several rotation periods per window
 - **Recording length: 20 s per sample** → EI slices into windows later
 - ±4 g range: scraping impacts can exceed ±2 g; clipping destroys data
 
 <!--
-Connect back to Module 3's sampling theory. The deliberate trade-off is worth dwelling on: at 100 Hz we cannot see blade-pass or bearing tones — that is what the RAK18000 microphone track (Day 3 option) is for. Ask: "what would we need to capture blade pass at 280 Hz?" (≥ 560 Hz sampling — the LIS3DH can do up to 5.3 kHz in low-power mode, but the data forwarder over 115200 baud serial becomes the bottleneck: 3 floats × ~10 bytes × rate). Window length rationale: at 25 Hz rotation, 2 s = 50 revolutions — plenty for stable statistics.
+Connect back to Module 3's sampling theory. The deliberate trade-off is worth dwelling on: even at 250 Hz we cannot see blade-pass or bearing tones — that is what the RAK18000 microphone track (Day 3 option) is for. Ask: "what would we need to capture blade pass at 280 Hz?" (≥ 560 Hz sampling — the LIS3DH can do up to 5.3 kHz in low-power mode, but the data forwarder over 115200 baud serial becomes the bottleneck: at 250 Hz x 3 axes we already use ~39% of the link, so 560 Hz would need a higher baud rate). Window length rationale: at 25 Hz rotation, 2 s = 50 revolutions — plenty for stable statistics, and 500 samples is still a comfortable buffer on the nRF52840.
 -->
 
 ---
@@ -170,7 +170,7 @@ Connect back to Module 3's sampling theory. The deliberate trade-off is worth dw
 **`exercises/module4-fan-dataset/README.md`** → sections 1–2
 
 - Zip-tie the WisBlock to the fan frame — **rigid coupling**, connector clear
-- Flash Module 3's forwarder → verify **≈100 Hz** detected
+- Flash Module 3's forwarder → verify **≈250 Hz** detected
 - Fan on `normal`: watch the live waveform — visible periodicity = good coupling
 - **Done when:** forwarder streams clean data with the fan running
 
@@ -253,7 +253,7 @@ The RPM entry matters most: Module 5's spectral section asks everyone to find th
 # Ingestion recap — the Module 3 forwarder
 
 - We reuse the **accel-forwarder firmware from Module 3** unchanged
-  (LIS3DH @ 100 Hz → `x\ty\tz` lines on USB serial @ 115200)
+  (LIS3DH ODR 400 Hz, polled at 250 Hz → `x\ty\tz` lines on USB serial @ 115200)
 - On the laptop:
 
 ```bash
@@ -261,11 +261,11 @@ edge-impulse-data-forwarder
 # → login, select project, name axes: accX, accY, accZ
 ```
 
-- Forwarder auto-detects the sample rate from line timing — verify it reports **≈ 100 Hz**
+- Forwarder auto-detects the sample rate from line timing — verify it reports **≈ 250 Hz**
 - Then: EI Studio → **Data acquisition** → device shows up → set label + length → *Start sampling*
 
 <!--
-Do not re-flash or rewrite anything — this is the payoff of Module 3. If someone's forwarder detects 62 Hz instead of 100 Hz, their firmware loop has timing jitter (delay() instead of a timer) — fix in firmware, not by lying to EI. The axis names matter: keep accX/accY/accZ consistent across the whole class so projects can be merged later.
+Do not re-flash or rewrite anything — this is the payoff of Module 3. If someone's forwarder detects, say, 160 Hz instead of 250 Hz, their firmware loop has timing jitter (delay() instead of a timer) — fix in firmware, not by lying to EI. A rate pinned near 100 Hz with a stair-stepped waveform is the other classic: the LIS3DH ODR is below the polling rate, so each sample is read several times. The axis names matter: keep accX/accY/accZ consistent across the whole class so projects can be merged later.
 -->
 
 ---
@@ -277,7 +277,7 @@ Do not re-flash or rewrite anything — this is the payoff of Module 3. If someo
 <!-- Reused EI screenshot (May 2026, HW-agnostic UI) from the old anomaly exercise — shows impulse design page; usable as-is since no Photon hardware is visible. -->
 
 <!--
-Walk the UI live in parallel: Data acquisition tab, label field, sample length 20000 ms, frequency 100 Hz. Show one recording end-to-end, then let them loop. The screenshot shows where this data eventually flows — the impulse design page — as a teaser for what happens after lunch.
+Walk the UI live in parallel: Data acquisition tab, label field, sample length 20000 ms, frequency 250 Hz. Show one recording end-to-end, then let them loop. The screenshot shows where this data eventually flows — the impulse design page — as a teaser for what happens after lunch.
 -->
 
 ---
@@ -310,7 +310,7 @@ For every state, click a sample in EI and **eyeball the waveform**:
 **If two states look identical → make the physical fault stronger *now*, not on Day 3.**
 
 <!--
-"Blocked" is the state most likely to be weak at 100 Hz — its main signatures (RPM shift, flow noise) are subtle in accelerometer amplitude. That's intentional: it motivates spectral features in Module 5 (RPM shift is invisible to RMS but obvious in the FFT). If a participant's blocked state is truly indistinguishable, options: block more of the intake, or lower the supply voltage for that scenario — but then document it in metadata.
+"Blocked" is the state most likely to be weak in amplitude features — its main signatures (RPM shift, flow noise) are subtle in accelerometer amplitude. That's intentional: it motivates spectral features in Module 5 (RPM shift is invisible to RMS but obvious in the FFT). If a participant's blocked state is truly indistinguishable, options: block more of the intake, or lower the supply voltage for that scenario — but then document it in metadata.
 -->
 
 ---
@@ -352,7 +352,7 @@ Print this table into the exercise README as well (it's there). The "normal form
 # Optional extension — parallel audio
 
 - RAK18000 PDM mic (IO slot, DATA `WB_IO3`, CLK `WB_IO4`) can record the same states **acoustically**
-- Audio at 16 kHz captures what 100 Hz vibration cannot: blade-pass, flow turbulence, bearing hiss
+- Audio at 16 kHz captures what 250 Hz vibration cannot: blade-pass, flow turbulence, bearing hiss
 - Workflow (from Module 3): PCM dump → WAV → `edge-impulse-uploader`
 - **Do this only if your vibration dataset is done and clean**
 
@@ -367,7 +367,7 @@ Keep this strictly optional — Day 2 is accelerometer-centric by design; audio 
 **`exercises/module4-fan-dataset/README.md`**
 
 1. Build the rig: mount WisBlock on fan (photo checklist)
-2. Verify the forwarder path (Module 3 firmware, 100 Hz)
+2. Verify the forwarder path (Module 3 firmware, 250 Hz)
 3. Define the 5 states — physically prepare each fault
 4. Record: ≥ 5 × 20 s per state, interleaved, metadata as you go
 5. Label + train/test split in EI Studio

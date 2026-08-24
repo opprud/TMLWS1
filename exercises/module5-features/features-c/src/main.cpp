@@ -4,8 +4,8 @@
 //   g  (default, auto-repeats every 5 s)  — features on the deterministic
 //        SYNTHETIC golden window. validate_features.py generates the identical
 //        window in numpy and compares the numbers.
-//   l  — capture a LIVE 256-sample window from the RAK1904 (LIS3DH, slot A,
-//        I2C 0x18) at 100 Hz and print its features.
+//   l  — capture a LIVE FEAT_FFT_N-sample window from the RAK1904 (LIS3DH,
+//        slot A, I2C 0x18) at FS and print its features.
 //
 // To use a golden window exported from notebook 02 instead of the synthetic one:
 //   1) run notebook 02 section 8 — it writes include/golden/win_<label>.h
@@ -18,8 +18,10 @@
 #include "features.h"
 
 // ---- configuration ---------------------------------------------------------
-static const float FS = 100.0f;          // Hz — matches Module 4 recordings
-static const int N = FEAT_FFT_N;         // 256 samples = 2.56 s @ 100 Hz
+// FS must match the Module 4 recordings AND validate_features.py — the script
+// reads the fs we print below and aborts on a mismatch (band edges depend on it).
+static const float FS = 250.0f;          // Hz — matches Module 4 recordings
+static const int N = FEAT_FFT_N;         // 512 samples = 2.048 s @ 250 Hz
 
 // Synthetic golden window — MUST match validate_features.py exactly:
 //   x[i] = 0.8*sin(2*pi*25*i/fs) + 0.3*sin(2*pi*40*i/fs) + 0.05*sin(2*pi*3.1*i/fs + 1.0)
@@ -35,10 +37,30 @@ static void make_synthetic_window(float *x, int n, float fs)
 }
 
 // Uncomment to run on a window exported from your own fan data
-// (notebook 02, section 8 — README A2 step 7):
+// (notebook 02, section 8 — README A2 step 7). Change all FOUR lines together:
+// GOLDEN_NAME is printed over serial so validate_features.py can check you are
+// comparing against the matching .csv twin and not some other class.
+
+#if 0
 #include "golden/win_normal.h"
+#define GOLDEN_NAME   "win_normal"
 #define GOLDEN_WINDOW win_normal
 #define GOLDEN_LEN    WIN_NORMAL_LEN
+#else
+#include "golden/win_imbalance.h"
+#define GOLDEN_NAME   "win_imbalance"
+#define GOLDEN_WINDOW win_imbalance
+#define GOLDEN_LEN    WIN_IMBALANCE_LEN
+#endif
+
+
+#ifdef GOLDEN_WINDOW
+// Regenerating the goldens with a different FFT_N would silently overrun
+// window_buf in the memcpy below — catch it at compile time instead.
+static_assert(GOLDEN_LEN == FEAT_FFT_N,
+              "golden window length != FEAT_FFT_N — re-export from notebook 02 "
+              "section 8 with FFT_N matching features.h");
+#endif
 
 // ---- globals ----------------------------------------------------------------
 static float window_buf[FEAT_FFT_N];
@@ -84,7 +106,12 @@ static void print_features(const char *window_name)
 #endif
 
     Serial.println("FEATURES_BEGIN");
+#ifdef GOLDEN_NAME
+    snprintf(linebuf, sizeof(linebuf), "window=%s golden=%s n=%d fs=%.1f",
+             window_name, GOLDEN_NAME, N, (double)FS);
+#else
     snprintf(linebuf, sizeof(linebuf), "window=%s n=%d fs=%.1f", window_name, N, (double)FS);
+#endif
     Serial.println(linebuf);
     snprintf(linebuf, sizeof(linebuf),
              "axis=x mean=%.6f std=%.6f rms=%.6f min=%.6f max=%.6f zc=%d",
@@ -150,8 +177,13 @@ void setup()
     lis_ok = lis.begin(0x18);                 // RAK1904 in sensor slot A
     if (lis_ok) {
         lis.setRange(LIS3DH_RANGE_4_G);       // +/-4 g, as in Module 4
-        lis.setDataRate(LIS3DH_DATARATE_100_HZ);
-        Serial.println("# LIS3DH ready (0x18, +/-4g, 100 Hz)");
+        // ODR must be ABOVE the polling rate or every poll re-reads the same
+        // OUT registers: at 250 Hz polling a 100 Hz ODR gives ~2.5 copies of
+        // each sample — a stair-stepped signal that still "validates" (both
+        // sides see the same array) but is spectrally wrong. 400 Hz ODR at
+        // 250 Hz polling is the Module 3 forwarder convention.
+        lis.setDataRate(LIS3DH_DATARATE_400_HZ);
+        Serial.println("# LIS3DH ready (0x18, +/-4g, ODR 400 Hz, polled at FS)");
     } else {
         Serial.println("# LIS3DH not found — live mode 'l' disabled, golden mode works");
     }
@@ -166,7 +198,9 @@ void loop()
     if (Serial.available()) cmd = (char)Serial.read();
 
     if (cmd == 'l') {
-        Serial.println("# capturing 256 live samples...");
+        snprintf(linebuf, sizeof(linebuf), "# capturing %d live samples at %.1f Hz...",
+                 N, (double)FS);
+        Serial.println(linebuf);
         if (capture_live_window()) {
             print_features("live");
         } else {

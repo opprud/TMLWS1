@@ -17,7 +17,7 @@ Three models on your fan dataset, all deployed to the RAK4631, all measured. The
 
 ## Ground rules (all tracks)
 
-1. **Window discipline:** the window length/rate used in training **must** equal the firmware window. Default in this material: **100 Hz, 200-sample windows, 50 % overlap**. <!-- VERIFY: match whatever was fixed in Modules 4–5 -->
+1. **Window discipline:** the window length/rate used in training **must** equal the firmware window. Default in this material: **250 Hz, 500-sample windows (2 s), 50 % overlap** — matching `SAMPLE_RATE_HZ` in the Module 3 forwarder and the windowing in Module 5's notebooks.
 2. **Validate on the 4-step ladder** before trusting live data: Python → C-on-laptop → C-on-device with static arrays → live sensor.
 3. **Measure everything** for the worksheet: accuracy (held-out test set), flash & RAM (PlatformIO build summary delta vs a baseline build), latency (`micros()` around inference, median of ≥ 20 runs).
 
