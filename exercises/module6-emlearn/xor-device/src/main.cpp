@@ -29,7 +29,23 @@
 #define FEATURE_SCALE 255
 
 static char linebuf[64];
-static char outbuf[96];
+static char outbuf[128];
+
+// ---- cycle-accurate timing ---------------------------------------------------
+// micros() is useless for timing a single tree inference. On this core:
+//     micros() = dwt_enabled() ? DWT->CYCCNT/64 : tick2us(xTaskGetTickCount())
+// and configTICK_RATE_HZ is 1024, so without a debugger attached it moves in
+// steps of 976.5625 us — while one XOR prediction takes a few microseconds.
+// Every measurement would read 0 us (or, occasionally, 977). Enabling DWT sets
+// the two bits dwt_enabled() tests and gives 15.6 ns resolution.
+static inline void dwt_timing_enable(void)
+{
+    CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
+    DWT->CYCCNT = 0;
+    DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
+}
+static inline uint32_t cyc_now(void) { return DWT->CYCCNT; }
+static inline float cyc_to_us(uint32_t c) { return (float)c / ((float)F_CPU / 1e6f); }
 
 static bool read_two_floats(float *a, float *b)
 {
@@ -52,6 +68,7 @@ static bool read_two_floats(float *a, float *b)
 
 void setup()
 {
+    dwt_timing_enable();        // 15.6 ns latency timing; see note above
     pinMode(LED_GREEN, OUTPUT);
     pinMode(LED_BLUE, OUTPUT);
     Serial.begin(115200);
@@ -81,18 +98,21 @@ void loop()
         features[i] = (int16_t)(v + 0.5f);             // round, don't truncate
     }
 
-    uint32_t t0 = micros();
+    uint32_t t0 = cyc_now();
     int32_t out = xor_model_predict(features, N_FEATURES);
-    uint32_t latency = micros() - t0;
+    uint32_t cycles = cyc_now() - t0;
+    float latency_us = cyc_to_us(cycles);
 
     digitalWrite(LED_GREEN, out == 1 ? HIGH : LOW);
     digitalWrite(LED_BLUE, out == 0 ? HIGH : LOW);
 
+    // Report cycles too: at 64 MHz a 10-tree forest is a few hundred cycles, and
+    // cycles are the honest unit — they do not change if the clock does.
     snprintf(outbuf, sizeof(outbuf),
-             "in=(%.2f, %.2f) = (%d, %d) -> class %ld (XOR %s)   latency=%lu us",
+             "in=(%.2f, %.2f) = (%d, %d) -> class %ld (XOR %s)   latency=%.2f us (%lu cycles)",
              (double)typed[0], (double)typed[1],
              (int)features[0], (int)features[1],
              (long)out, out == 1 ? "true" : "false",
-             (unsigned long)latency);
+             (double)latency_us, (unsigned long)cycles);
     Serial.println(outbuf);
 }

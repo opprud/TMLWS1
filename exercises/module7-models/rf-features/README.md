@@ -104,6 +104,11 @@ All PASS? You have validated the entire chain except the sensor.
 
    ```
    normal     (conf n/a)  feat 812 us  model 42 us  total 854 us
+
+   (illustrative — the firmware now enables DWT in setup() so these are real
+    measurements at 15.6 ns resolution. Without it micros() steps in 976.5625 us
+    on this core, so `model` would read a flat 0 us and `feat` would be quantised
+    to a multiple of 977. Numbers also scale with WINDOW_LEN, now 500 not 200.)
    imbalance  ...
    ```
 

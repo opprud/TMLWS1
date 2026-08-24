@@ -83,10 +83,17 @@ can see the quantisation happen. It does not echo what you type — start the mo
 
 ```
 0.9 0.1                                          ← you type
-in=(0.90, 0.10) = (230, 26) -> class 1 (XOR true)   latency=42 us
+in=(0.90, 0.10) = (230, 26) -> class 1 (XOR true)   latency=<x.xx> us (<n> cycles)
 0.9 0.8                                          ← you type
-in=(0.90, 0.80) = (230, 204) -> class 0 (XOR false)  latency=41 us
+in=(0.90, 0.80) = (230, 204) -> class 0 (XOR false)  latency=<x.xx> us (<n> cycles)
 ```
+
+> **Why the latency field is trustworthy now.** `micros()` on this core falls back to
+> the FreeRTOS tick (1024 Hz = 976.5625 µs steps) unless DWT is enabled — coarser than
+> the thing being measured, so a single tree inference always printed `latency=0 us`.
+> The firmware calls `dwt_timing_enable()` in `setup()`, giving `DWT->CYCCNT` timing at
+> 15.6 ns. Cycles are printed alongside µs because cycles are the honest unit: they do
+> not change if the clock does. If you ever see `latency=0.00 us`, DWT did not enable.
 
 **`FEATURE_SCALE` in `src/main.cpp` must equal `FEATURE_SCALE` in `train_xor.py`.** The
 thresholds baked into the model are in those units, so a mismatch silently moves every

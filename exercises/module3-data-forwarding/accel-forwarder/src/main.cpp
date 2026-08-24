@@ -32,8 +32,26 @@
 Adafruit_LIS3DH lis = Adafruit_LIS3DH();
 static uint32_t nextSampleDeadline; // absolute micros() deadline
 
+// The absolute-deadline scheduler in loop() is only as good as micros(), and on
+// this core micros() is dwt_enabled() ? DWT->CYCCNT/64 : tick2us(xTaskGetTickCount()).
+// configTICK_RATE_HZ is 1024, so with no debugger attached micros() advances in
+// 976.5625 us steps. The average rate still comes out at SAMPLE_RATE_HZ (the
+// deadline accumulates exactly), so the forwarder still *detects* 250 Hz — but
+// each individual sample snaps to a tick boundary, jittering by up to +/-976 us
+// on a 4000 us period. That is ~25 % timing jitter, and it smears every spectrum
+// computed downstream in Modules 4-5. Enabling DWT gives micros() 15.6 ns
+// resolution and the deadline becomes exact.
+static inline void dwt_timing_enable(void)
+{
+  CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
+  DWT->CYCCNT = 0;
+  DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
+}
+
 void setup()
 {
+  dwt_timing_enable();   // must precede any micros() use — see note above
+
   // Power the WisBlock sensor slots (3V3_S rail)
   pinMode(WB_IO2, OUTPUT);
   digitalWrite(WB_IO2, HIGH);

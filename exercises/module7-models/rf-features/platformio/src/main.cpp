@@ -44,6 +44,21 @@ static void set_leds(int cls) {
     digitalWrite(LED_BLUE, (!is_normal && !is_off) ? HIGH : LOW);
 }
 
+// ---- cycle-accurate timing ---------------------------------------------------
+// micros() on this core is dwt_enabled() ? DWT->CYCCNT/64 : tick2us(tick), and
+// configTICK_RATE_HZ is 1024 -> 976.5625 us steps with no debugger attached.
+// That is coarser than the feature pass we are trying to measure (model
+// inference reads as a flat 0 us), AND it quantises the sampling deadline in
+// loop(): a 4000 us period lands on tick boundaries, so individual samples jitter
+// by up to +/-976 us even though the average rate stays 250 Hz. Timing jitter
+// smears the spectrum, which is exactly what Modules 4-5 analyse. Enabling DWT
+// fixes both: 15.6 ns resolution here, and a clean deadline in loop().
+static inline void dwt_timing_enable(void) {
+    CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
+    DWT->CYCCNT = 0;
+    DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
+}
+
 static int classify(const float *buf, uint32_t *feat_us, uint32_t *model_us) {
     uint32_t t0 = micros();
     calculate_features(buf, WINDOW_LEN, features);
@@ -76,6 +91,8 @@ static void run_static_tests() {
 }
 
 void setup() {
+    dwt_timing_enable();    // 15.6 ns micros(); also de-jitters the loop deadline
+
     // --- WisBlock ritual: power the sensor-slot 3V3_S rail. Do not delete. ---
     pinMode(WB_IO2, OUTPUT);
     digitalWrite(WB_IO2, HIGH);
