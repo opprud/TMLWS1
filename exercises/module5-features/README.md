@@ -57,7 +57,7 @@ A PlatformIO project for the RAK4631 that computes, on-device:
 
 - time-domain: **mean, std (population), RMS, min, max, zero-crossings** — one pass, no malloc
 - frequency-domain: **512-point FFT → 5 × 25 Hz band energies** at FS = 250 Hz (plain-C DFT by default; real CMSIS-DSP is an optional opt-in, see below)
-- execution time of each stage via `micros()`
+- execution time of each stage via the **DWT cycle counter** (15.6 ns; `micros()` is far too coarse here — see B4)
 
 ### B1. Build & flash
 
@@ -110,7 +110,7 @@ FEATURES_END
 The `cmsis` env adds both FFT timings and an agreement check:
 
 ```
-timing stats_us=... fft_us=... fft_naive_us=... fft_cmsis_us=...
+timing stats_us=... fft_us=... fft_naive_us=... fft_cmsis_us=... speedup=...
 fft_agree max_rel=...           # naive vs CMSIS band energies — must be ~1e-6
 ```
 
@@ -150,25 +150,36 @@ Flash the **`cmsis`** env (B1b) and read the two FFT numbers from one window:
 
 | Stage | µs @ 64 MHz | % of a 2.048 s window |
 |---|---|---|
-| time-domain stats (512 samples, 1 axis) | | |
-| 512-pt band energies — **naive DFT** (`fft_naive_us`) | | |
-| 512-pt band energies — **CMSIS-DSP FFT** (`fft_cmsis_us`) | | |
+| time-domain stats (512 samples, 1 axis) | 303 | 0.015 % |
+| 512-pt band energies — **naive DFT** (`fft_naive_us`) | 6,757,669 | **330 %** |
+| 512-pt band energies — **CMSIS-DSP FFT** (`fft_cmsis_us`) | 2,253 | 0.11 % |
+
+Reference values measured on a RAK4631 — yours should land within ~10 %. The firmware
+also prints `speedup=` (naive ÷ CMSIS) so you do not have to divide at the bench:
+**≈ 3000×**. Feature extraction for all three axes costs 0.37 % duty cycle; the MCU
+sleeps the other 99.6 % of the time.
 
 The `fft_agree max_rel` line proves both backends compute the *same* band energies
 (~1e-6) — so the only difference you're paying for is speed. The naive O(N²) DFT is
 roughly two orders of magnitude slower than the hardware `arm_rfft_fast_f32`; that
 gap is the reason real firmware uses CMSIS-DSP.
 
-At N = 512 the naive DFT measures **~6.8 s per window** — it is now *3.3× slower than
-real time* for 2.048 s of data, and it overruns the firmware's 5 s auto-repeat, so the
-`naive` env just runs back-to-back DFTs. Going 256 → 512 cost 4× (O(N²)); that is the
-headline number for this exercise. The `naive` env is still the right default for
-*correctness* work — it needs no external library — but at this window length only the
-CMSIS build could keep up with a live sensor.
+At N = 512 the naive DFT measures **6.76 s per window** — *3.3× slower than real time*
+for 2.048 s of data, and it overruns the firmware's 5 s auto-repeat, so the `naive` env
+just runs back-to-back DFTs. Going 256 → 512 cost 4× (O(N²)); that is the headline
+number for this exercise. The `naive` env is still the right default for *correctness*
+work — it needs no external library — but at this window length only the CMSIS build
+could keep up with a live sensor.
 
-> Measurement caveat: `micros()` on the Adafruit nRF52 core is RTC-backed at
-> 32.768 kHz, i.e. **~30 µs granularity** — that is why `stats_us` reads `0` for a
-> ~30 µs pass. To time it, loop the call 100× and divide, or use `DWT->CYCCNT`.
+> **Measurement caveat — read this before trusting any timing.** `micros()` on this core
+> is `dwt_enabled() ? DWT->CYCCNT/64 : tick2us(xTaskGetTickCount())`, and
+> `configTICK_RATE_HZ` is **1024**. With no debugger attached DWT is off, so `micros()`
+> moves in steps of **976.5625 µs**: the 303 µs stats pass reads as `0`, and the 2,253 µs
+> FFT reads as exactly `1953` µs — 2 ticks wearing a microsecond costume. The firmware
+> now calls `dwt_timing_enable()` in `setup()`, which sets the two bits `dwt_enabled()`
+> tests and gives **15.6 ns** resolution (it also upgrades every other `micros()` call in
+> the program to 1 µs). If a timing number is an exact multiple of 976.5625 µs, you are
+> reading a tick count, not a measurement.
 
 > **Troubleshooting (Track B)**
 > - *Build fails around `arm_math.h` / CMSIS-DSP*: you're on `-e cmsis` but haven't fetched the source — see B1b. The default `-e naive` build needs no CMSIS at all.

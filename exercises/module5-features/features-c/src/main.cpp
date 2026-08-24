@@ -62,6 +62,26 @@ static_assert(GOLDEN_LEN == FEAT_FFT_N,
               "section 8 with FFT_N matching features.h");
 #endif
 
+// ---- cycle-accurate timing ---------------------------------------------------
+// Do NOT time these stages with micros(). On this core (delay.h):
+//     micros() = dwt_enabled() ? DWT->CYCCNT/64 : tick2us(xTaskGetTickCount())
+// and configTICK_RATE_HZ is 1024, so with no debugger attached micros() moves in
+// steps of 976.5625 us. The time-domain pass (tens of us) then reads as 0, and a
+// ~2 ms FFT reads as exactly 1953 us = 2 ticks — a tick count wearing a
+// microsecond costume. Enabling DWT sets both bits dwt_enabled() tests, which
+// also silently upgrades every other micros() call in the program to 1 us.
+// CYCCNT is 32-bit: at 64 MHz it wraps after ~67 s, comfortably clear of the
+// 6.8 s naive DFT.
+static inline void dwt_timing_enable(void)
+{
+    CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
+    DWT->CYCCNT = 0;
+    DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
+}
+static inline uint32_t cyc_now(void) { return DWT->CYCCNT; }
+// F_CPU is 64 MHz on the nRF52840 -> 1 cycle = 15.625 ns
+static inline float cyc_to_us(uint32_t c) { return (float)c / ((float)F_CPU / 1e6f); }
+
 // ---- globals ----------------------------------------------------------------
 static float window_buf[FEAT_FFT_N];
 static Adafruit_LIS3DH lis;
@@ -73,22 +93,22 @@ static void print_features(const char *window_name)
     time_features_t tf;
     float bands[FEAT_N_BANDS];
 
-    uint32_t t0 = micros();
+    uint32_t t0 = cyc_now();
     time_features_compute(window_buf, N, &tf);
-    uint32_t stats_us = micros() - t0;
+    float stats_us = cyc_to_us(cyc_now() - t0);
 
 #ifdef USE_CMSIS_DSP
     // Run BOTH FFT backends on the same window and time each. `bands` (printed
     // below and validated against numpy) comes from CMSIS; the naive result is
     // only used to time the plain-C DFT and cross-check agreement.
     float bands_naive[FEAT_N_BANDS];
-    t0 = micros();
+    t0 = cyc_now();
     int rc_naive = band_energies_naive(window_buf, N, FS, bands_naive, FEAT_N_BANDS);
-    uint32_t fft_naive_us = micros() - t0;
+    float fft_naive_us = cyc_to_us(cyc_now() - t0);
 
-    t0 = micros();
+    t0 = cyc_now();
     int rc = band_energies_cmsis(window_buf, N, FS, bands, FEAT_N_BANDS);
-    uint32_t fft_cmsis_us = micros() - t0;
+    float fft_cmsis_us = cyc_to_us(cyc_now() - t0);
 
     float agree_max_rel = 0.0f;
     if (rc == 0 && rc_naive == 0) {
@@ -100,9 +120,9 @@ static void print_features(const char *window_name)
         }
     }
 #else
-    t0 = micros();
+    t0 = cyc_now();
     int rc = band_energies_compute(window_buf, N, FS, bands, FEAT_N_BANDS);
-    uint32_t fft_us = micros() - t0;
+    float fft_us = cyc_to_us(cyc_now() - t0);
 #endif
 
     Serial.println("FEATURES_BEGIN");
@@ -131,15 +151,17 @@ static void print_features(const char *window_name)
     // fft_us kept as an alias (= CMSIS) so validate_features.py's timing line
     // still resolves; the two explicit numbers are the actual comparison.
     snprintf(linebuf, sizeof(linebuf),
-             "timing stats_us=%lu fft_us=%lu fft_naive_us=%lu fft_cmsis_us=%lu",
-             (unsigned long)stats_us, (unsigned long)fft_cmsis_us,
-             (unsigned long)fft_naive_us, (unsigned long)fft_cmsis_us);
+             "timing stats_us=%.2f fft_us=%.2f fft_naive_us=%.2f fft_cmsis_us=%.2f "
+             "speedup=%.0f",
+             (double)stats_us, (double)fft_cmsis_us,
+             (double)fft_naive_us, (double)fft_cmsis_us,
+             (double)(fft_cmsis_us > 0.0f ? fft_naive_us / fft_cmsis_us : 0.0f));
     Serial.println(linebuf);
     snprintf(linebuf, sizeof(linebuf), "fft_agree max_rel=%.2e", (double)agree_max_rel);
     Serial.println(linebuf);
 #else
-    snprintf(linebuf, sizeof(linebuf), "timing stats_us=%lu fft_us=%lu",
-             (unsigned long)stats_us, (unsigned long)fft_us);
+    snprintf(linebuf, sizeof(linebuf), "timing stats_us=%.2f fft_us=%.2f",
+             (double)stats_us, (double)fft_us);
     Serial.println(linebuf);
 #endif
     Serial.println("FEATURES_END");
@@ -165,6 +187,8 @@ static bool capture_live_window(void)
 
 void setup()
 {
+    dwt_timing_enable();                      // 15.6 ns timing; see note above
+
     // --- WisBlock ritual: power the sensor-slot 3V3_S rail. Do not delete. ---
     pinMode(WB_IO2, OUTPUT);
     digitalWrite(WB_IO2, HIGH);

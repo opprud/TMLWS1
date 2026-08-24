@@ -358,10 +358,10 @@ arm_rfft_fast_f32(&S, input, output, 0);   // output: interleaved re/im
 arm_cmplx_mag_f32(output, mag, 256);       // -> 256 magnitude bins
 ```
 
-- 512-point float FFT: milliseconds at 64 MHz
+- 512-point float FFT: **2.25 ms** at 64 MHz
 - The exercise's `cmsis` build **measures this against the plain-C DFT** on the same
   window — identical band energies (`fft_agree max_rel` ~1e-6), but the naive O(N²)
-  DFT takes **6.8 s** for the same 512 samples
+  DFT takes **6.76 s** for the same 512 samples
 - CMSIS-DSP also has one-call stats: `arm_mean_f32`, `arm_rms_f32`, `arm_std_f32` — compare against your loop!
 
 <!--
@@ -396,21 +396,24 @@ uint32_t dt = micros() - t0;
 Serial.printf("time features: %lu us\n", dt);
 ```
 
-- Measured (64 MHz M4F, N=512, one axis): stats **below the 30 µs `micros()` resolution**;
-  the **naive $O(N^2)$ DFT ≈ 6.8 s** — it recomputes `cosf`/`sinf` per bin per sample
-- That is **3.3× slower than real time** for a 2.048 s window: the naive path cannot keep
-  up with the sensor at all. The CMSIS `arm_rfft_fast_f32` runs in milliseconds — you
-  measure both with the `cmsis` env and fill in the ratio yourself
+- Measured on our RAK4631 (64 MHz M4F, N=512, one axis, DWT cycle counter):
+  stats **303 µs** · CMSIS `arm_rfft_fast_f32` **2,253 µs** · naive $O(N^2)$ DFT **6.76 s**
+- **≈ 3000× speedup** — the naive DFT recomputes `cosf`/`sinf` per bin per sample
+- Duty cycle over a 2.048 s window: stats+FFT = **0.13 % on one axis, 0.37 % on three**.
+  The naive path is **330 %** — slower than real time, it can never keep up with the sensor
 - Going N=256 → 512 cost **4×** on the naive path ($O(N^2)$) and ~2× on the FFT ($O(N\log N)$)
 - This headroom is *the* TinyML power story: compute briefly, sleep long
 
 <!--
-Fill the exact µs live from the cmsis-env serial output (fft_cmsis_us / fft_naive_us)
-if a board is on the bench; the order-of-magnitude contrast above is the takeaway
-either way. The naive 512-pt DFT is ~130k inner iterations with a cosf AND a sinf each
-(~260k trig evals/axis) and measures 6.8 s on our RAK4631 — worth letting that number
-land, because it is slower than real time. TODO: paste the measured fft_cmsis_us here
-once the cmsis env has been flashed on the bench board.
+The numbers on this slide are measured, not estimated — the firmware prints them, so
+read them live off the bench board if it is connected. The naive 512-pt DFT is ~130k
+inner iterations with a cosf AND a sinf each (~260k trig evals/axis) and measures 6.76 s
+— worth letting that land, because it is slower than real time. Timing gotcha worth
+mentioning if anyone tries this themselves: micros() on this core falls back to the
+FreeRTOS tick (1024 Hz = 976.6 us steps) unless DWT is enabled, so the 303 us stats pass
+reads as 0 and the 2253 us FFT reads as exactly 1953 us = 2 ticks. The firmware enables
+DWT->CYCCNT (15.6 ns) in setup() for this reason. Measuring your own optimisations with
+a clock coarser than the thing you are measuring is a classic own-goal.
 -->
 
 <!--
