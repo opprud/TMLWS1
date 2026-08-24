@@ -15,11 +15,18 @@
 #include <stdlib.h>      // strtod — no scanf float dependency (newlib-nano)
 
 #include "xor_model.h"   // generated — defines xor_model_predict()
-// VERIFY: the generated predict function is named `<name>_predict` for
-// method='inline' (signature: int32_t xor_model_predict(const float*, int32_t)).
-// If your emlearn version names it differently, open xor_model.h and adjust below.
+// The generated predict function is `<name>_predict`, and emlearn's tree runtime
+// is fixed-point, so its signature is:
+//     int32_t xor_model_predict(const int16_t *features, int32_t features_length)
+// If your emlearn version names it differently, open xor_model.h and adjust.
 
 #define N_FEATURES 2
+
+// MUST equal FEATURE_SCALE in ../xor-train/train_xor.py. The model's split
+// thresholds are integers in these units (~104, ~7, ...), so scaling the input
+// differently here silently moves every decision boundary — the model would
+// still run and still look plausible, which is the worst kind of wrong.
+#define FEATURE_SCALE 255
 
 static char linebuf[64];
 static char outbuf[96];
@@ -57,10 +64,21 @@ void setup()
 
 void loop()
 {
-    float features[N_FEATURES];
+    float typed[N_FEATURES];
 
-    if (!read_two_floats(&features[0], &features[1])) {
+    if (!read_two_floats(&typed[0], &typed[1])) {
         return;   // no/invalid input yet — keep waiting
+    }
+
+    // Quantise exactly as train_xor.py did: [0,1] -> 0..FEATURE_SCALE, int16.
+    // This is the whole point of the fixed-point tree runtime — no FPU needed
+    // at inference time, just integer compares.
+    int16_t features[N_FEATURES];
+    for (int i = 0; i < N_FEATURES; i++) {
+        float v = typed[i] * (float)FEATURE_SCALE;
+        if (v < 0.0f) v = 0.0f;                        // clamp: the model never
+        if (v > (float)FEATURE_SCALE) v = FEATURE_SCALE;  // saw out-of-range data
+        features[i] = (int16_t)(v + 0.5f);             // round, don't truncate
     }
 
     uint32_t t0 = micros();
@@ -71,8 +89,9 @@ void loop()
     digitalWrite(LED_BLUE, out == 0 ? HIGH : LOW);
 
     snprintf(outbuf, sizeof(outbuf),
-             "in=(%.2f, %.2f) -> class %ld (XOR %s)   latency=%lu us",
-             (double)features[0], (double)features[1],
+             "in=(%.2f, %.2f) = (%d, %d) -> class %ld (XOR %s)   latency=%lu us",
+             (double)typed[0], (double)typed[1],
+             (int)features[0], (int)features[1],
              (long)out, out == 1 ? "true" : "false",
              (unsigned long)latency);
     Serial.println(outbuf);

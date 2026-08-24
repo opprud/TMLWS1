@@ -24,9 +24,25 @@ python train_xor.py
 The script:
 
 1. generates a noisy XOR dataset (2 features in [0,1], class = XOR of the halves) and plots it (`xor_data.png`),
-2. trains `RandomForestClassifier(n_estimators=10, max_depth=5)` — **expected accuracy ≥ 0.97** on the test split,
-3. converts with `emlearn.convert(model, method='inline')` and saves **`xor_model.h`**,
-4. sanity-checks the converted model on the four XOR corners.
+2. **quantises the features to integers 0..255** (`FEATURE_SCALE`) — see the box below,
+3. trains `RandomForestClassifier(n_estimators=10, max_depth=5)` — **expected accuracy ≈ 0.89** on the test split,
+4. converts with `emlearn.convert(model)` and saves **`xor_model.h`**,
+5. sanity-checks the converted model on the four XOR corners, and **exits non-zero if
+   sklearn and the converted model disagree** — do not flash a model that fails this.
+
+> **Why integers?** emlearn's tree runtime is *fixed-point*: `EmlTreesNode.value` is an
+> `int16_t` (look in `eml_trees.h`). Features in [0,1] therefore cannot work — the split
+> thresholds (~0.5) land in an integer field and truncate to **0**, every comparison
+> `features[i] < 0` is false, and the model predicts a constant class. Scaling to
+> 0..255 before training makes the thresholds honest integers (~104, ~7, ...). This is
+> the same trick as the upstream emlearn XOR example, and it is a preview of Module 9:
+> integer inference needs no FPU and costs less flash.
+>
+> Do **not** pass `method=`/`dtype=` to `convert()`. `dtype='float'` emits float
+> literals into that `int16_t` table (`narrowing conversion` — the firmware will not
+> build), and `dtype='int16'` with `method='inline'` emits `const int16 *features`,
+> which is not a C type. Both bugs are present in emlearn 0.21 *and* 0.23; the default
+> path is correct on both.
 
 **Look inside `xor_model.h`** before moving on. It is readable C: each tree is a
 nest of `if (features[i] < threshold)` — you can trace a prediction by hand.
@@ -60,16 +76,21 @@ pio run -t upload
 pio device monitor        # 115200 baud
 ```
 
-Type two numbers in [0,1] separated by space, press Enter. The firmware does
-not echo what you type — start the monitor with `pio device monitor --echo`
-to see your own input:
+Type two numbers in [0,1] separated by space, press Enter. The firmware scales them by
+`FEATURE_SCALE` (255) into the integers the model was trained on and prints both, so you
+can see the quantisation happen. It does not echo what you type — start the monitor with
+`pio device monitor --echo` to see your own input:
 
 ```
 0.9 0.1                                          ← you type
-in=(0.90, 0.10) -> class 1 (XOR true)   latency=42 us
+in=(0.90, 0.10) = (230, 26) -> class 1 (XOR true)   latency=42 us
 0.9 0.8                                          ← you type
-in=(0.90, 0.80) -> class 0 (XOR false)  latency=41 us
+in=(0.90, 0.80) = (230, 204) -> class 0 (XOR false)  latency=41 us
 ```
+
+**`FEATURE_SCALE` in `src/main.cpp` must equal `FEATURE_SCALE` in `train_xor.py`.** The
+thresholds baked into the model are in those units, so a mismatch silently moves every
+decision boundary — the model still runs and still looks plausible.
 
 - **Expected output:** the four corners `(0,0)→0, (0,1)→1, (1,0)→1, (1,1)→0`, and the green LED lit for class 1, blue for class 0.
 - Note the latency — a 10-tree forest predicts in **tens of microseconds** on a 64 MHz M4F.
@@ -77,7 +98,10 @@ in=(0.90, 0.80) -> class 0 (XOR false)  latency=41 us
 
 > **Troubleshooting**
 > - `xor_model.h: No such file or directory` — you skipped the first `cp` in Part 1; the header is *generated*, not checked in.
-> - `undefined reference to xor_model_predict` — your emlearn version generated a different function name; open `xor_model.h` and check the actual name (it is `<name>_predict` for `method='inline'`). `// VERIFY:` naming may differ across emlearn versions — adjust the call in `src/main.cpp`.
+> - `undefined reference to xor_model_predict` — your emlearn version generated a different function name; open `xor_model.h` and check the actual name (it is `<name>_predict`) — adjust the call in `src/main.cpp`.
+> - `narrowing conversion of '4.08946991e-1f' from 'float' to 'int16_t'` (a wall of them) — the model was converted with `dtype='float'`. Remove the `method=`/`dtype=` arguments from `emlearn.convert()` and regenerate; see the box in Part 1.
+> - `unknown type name 'int16'` — converted with `method='inline', dtype='int16'`; emlearn emits `int16` instead of `int16_t`. Same fix: use `emlearn.convert(model)` with no arguments.
+> - Model always predicts the same class — the classic symptom of unscaled [0,1] features: every threshold truncated to 0. Check `FEATURE_SCALE` matches on both sides.
 > - Build fails: `eml_trees.h: No such file or directory` — you skipped the second `cp` in Part 1: copy the emlearn include dir into `xor-device/lib/emlearn` (recent emlearn versions need it even with `method='inline'`), and check `-I lib/emlearn` is in `build_flags` in `platformio.ini`.
 > - No serial echo — the monitor sends on Enter; set *Send* mode / newline in your monitor, or use `pio device monitor --echo`.
 
