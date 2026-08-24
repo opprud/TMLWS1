@@ -10,7 +10,7 @@ Adapted from the earlier course's emlearn exercises and Jon Nordby's *Practical 
 
 ## Prerequisites
 
-- Python env with `scikit-learn`, `matplotlib`, `emlearn` (`pip install "emlearn==0.21.*"` <!-- VERIFY: current --> — **pin the version**, and use the same pin as setup-guide.md §4: the generated headers change between emlearn releases).
+- Python env with `scikit-learn`, `matplotlib`, `emlearn` (`pip install "emlearn==0.23.*"` — **pin the version** and use the same pin as setup-guide.md §4). The device-side runtime headers are vendored in `xor-device/lib/emlearn/` at **0.23.2**; keeping the generator on the same major.minor avoids skew between the header the model generator emits and the runtime that compiles it.
 - Working PlatformIO + RAK4631 setup from Module 2.
 - Optional for the laptop-compile detour: a host C compiler (`gcc`/`clang`).
 
@@ -55,13 +55,21 @@ Copy the model **and the emlearn runtime headers** into the device project:
 
 ```bash
 cp xor_model.h ../xor-device/include/
-cp -r "$(python -c 'import emlearn; print(emlearn.includedir)')" ../xor-device/lib/emlearn
 ```
 
-The second copy is required: recent emlearn versions `#include <eml_trees.h>`
-from the generated header even with `method='inline'`. `platformio.ini`
-already adds `-I lib/emlearn` to the build flags — this is the exact same
-step Day 3's fan classifier (Module 7.1) uses.
+That is the only copy you need. The generated header does `#include <eml_trees.h>`,
+and the emlearn runtime is **already vendored** in `xor-device/lib/emlearn/` —
+`platformio.ini` adds `-I lib/emlearn` to the build flags.
+
+> **Where do C headers come from in a Python package?** `pip install emlearn` ships
+> emlearn's C runtime *inside* the Python package — `python -c "import emlearn;
+> print(emlearn.includedir)"` prints the directory holding them. That is worth seeing
+> once, because it is the whole train-in-Python/run-in-C idea in one path. We vendor
+> the three headers the model actually needs (`eml_trees.h` → `eml_common.h` →
+> `eml_log.h`, 14 KB) rather than have you copy that directory, because `includedir`
+> is the package dir: copying it drags 43 headers **and 46 `.py` files** — 976 KB of
+> Python — into a microcontroller project, and it pins the runtime to the version the
+> generator was tested against instead of whatever your `pip` happens to hold.
 
 > **Troubleshooting**
 > - `ModuleNotFoundError: emlearn` — activate the course venv (`source ~/tinyml-env/bin/activate`).
@@ -109,7 +117,7 @@ decision boundary — the model still runs and still looks plausible.
 > - `narrowing conversion of '4.08946991e-1f' from 'float' to 'int16_t'` (a wall of them) — the model was converted with `dtype='float'`. Remove the `method=`/`dtype=` arguments from `emlearn.convert()` and regenerate; see the box in Part 1.
 > - `unknown type name 'int16'` — converted with `method='inline', dtype='int16'`; emlearn emits `int16` instead of `int16_t`. Same fix: use `emlearn.convert(model)` with no arguments.
 > - Model always predicts the same class — the classic symptom of unscaled [0,1] features: every threshold truncated to 0. Check `FEATURE_SCALE` matches on both sides.
-> - Build fails: `eml_trees.h: No such file or directory` — you skipped the second `cp` in Part 1: copy the emlearn include dir into `xor-device/lib/emlearn` (recent emlearn versions need it even with `method='inline'`), and check `-I lib/emlearn` is in `build_flags` in `platformio.ini`.
+> - Build fails: `eml_trees.h: No such file or directory` — the vendored runtime in `xor-device/lib/emlearn/` is missing or `-I lib/emlearn` was removed from `build_flags` in `platformio.ini`. Restore with `git checkout xor-device/lib/emlearn`, or re-copy from `python -c "import emlearn; print(emlearn.includedir)"`.
 > - No serial echo — the monitor sends on Enter; set *Send* mode / newline in your monitor, or use `pio device monitor --echo`.
 
 ## Part 3 — Experiments
