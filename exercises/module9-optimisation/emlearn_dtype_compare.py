@@ -45,7 +45,7 @@ FEATURE_SCALE = {"float": 1.0, "int32_t": 1000.0, "int16_t": 1000.0, "int8_t": 1
 
 
 def main():
-    X_raw, X, y, _ = load_windows(DATA_DIR)
+    X_raw, X, y, groups, _ = load_windows(DATA_DIR)
     labels = sorted(np.unique(y))
     y_int = np.array([labels.index(v) for v in y])
     Xtr, Xte, ytr, yte = train_test_split(X, y_int, test_size=0.25,

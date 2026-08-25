@@ -33,7 +33,15 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, confusion_matrix
 from sklearn.model_selection import GroupShuffleSplit
 
-import emlearn
+# emlearn 0.23.2's bayes.py runs `numpy.seterr(all='raise')` at import time — a
+# process-wide side effect: from then on every underflow anywhere becomes an
+# exception. Modules 8 and 9 import this file as a library (`from train_rf
+# import load_windows`), and Module 8's GMM notebook then dies inside sklearn's
+# log-sum-exp, which underflows harmlessly by design. Put numpy back the way
+# emlearn found it; nothing we use here needs the strict mode.
+_numpy_errstate = np.geterr()
+import emlearn                                                       # noqa: E402
+np.seterr(**_numpy_errstate)
 
 # --- Keep in sync with firmware (src/main.cpp) --------------------------------
 SAMPLE_RATE_HZ = 250          # course-wide rate (Module 3 forwarder SAMPLE_RATE_HZ)
