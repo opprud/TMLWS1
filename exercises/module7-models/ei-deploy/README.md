@@ -21,7 +21,7 @@ There is no official EI firmware for the RAK4631 — and that's fine: the C++ de
 
 1. **Deployment** page → search **Arduino library** → keep *Unoptimized (float32)* for now (int8 is Module 9) → **Build**, download the zip.
    - The *Arduino library* export is the most PlatformIO-friendly packaging of the C++ SDK — PlatformIO consumes Arduino-format libraries from `lib/` directly. (The plain *C++ library* export works too, but needs manual build-script wiring.)
-2. Create/open a PlatformIO project (copy `../rf-features/platformio/` as a starting point) and unzip into `lib/`:
+2. Open the skeleton project in **`platformio/`** (`platformio.ini` and `src/main.cpp` are already there — steps 3 and 4 below are what they contain, for reference) and unzip your export into `lib/`. The SDK itself is *not* in the repo: it is ~23 MB of generated code carrying your model, so everyone unzips their own.
 
    ```
    fan-ei/
