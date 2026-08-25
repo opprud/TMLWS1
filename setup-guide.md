@@ -66,12 +66,16 @@ Any recent Python (≥3.10). Recommended: a dedicated environment.
 ```bash
 python3 -m venv ~/tinyml-env
 source ~/tinyml-env/bin/activate        # Windows: tinyml-env\Scripts\activate
-pip install numpy pandas matplotlib scikit-learn jupyterlab emlearn tensorflow
+pip install numpy pandas matplotlib scikit-learn jupyterlab tensorflow
+pip install "emlearn==0.23.*"           # PINNED — see below
 ```
 
-- `emlearn` converts scikit-learn models to C headers (Modules 6–7).
+- `emlearn` converts scikit-learn models to C headers (Modules 6–7). **Pin it to `0.23.*`.**
+  The generated headers change between releases, and Modules 6 and 7 ship the matching
+  emlearn C runtime vendored in their `lib/emlearn/` (0.23.2, see `VERSION.txt`). A newer
+  or older `pip` version will emit a header that runtime cannot compile.
 - `tensorflow` is only needed for Keras notebooks (Modules 1, 7, 8); skip if disk-constrained and use Google Colab instead.
-- Test: `jupyter lab` opens in your browser; `python -c "import emlearn; print(emlearn.__version__)"`.
+- Test: `jupyter lab` opens in your browser; `python -c "import emlearn; print(emlearn.__version__)"` prints `0.23.2`.
 
 ## 5. Serial terminal (optional but handy)
 
@@ -98,7 +102,7 @@ only the head-to-head timing, not any of the feature validation.
 - [ ] Serial monitor shows output at 115200
 - [ ] `edge-impulse-data-forwarder --version` works
 - [ ] Edge Impulse account created
-- [ ] `jupyter lab` starts, `import sklearn, emlearn` succeeds
+- [ ] `jupyter lab` starts, `import sklearn, emlearn` succeeds, `emlearn.__version__` is `0.23.2`
 
 **Stuck?** Bring the problem to Day 1 — Module 2 has buffer time for setup triage.
 

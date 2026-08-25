@@ -10,6 +10,7 @@
 #pragma once
 
 #include <math.h>
+#include <stdint.h>
 #include <stddef.h>
 
 #define N_FEATURES 13
@@ -63,4 +64,25 @@ static void calculate_features(const float *buf, int n, float *out) {
     out[6] = kurt[0]; out[7] = kurt[1]; out[8] = kurt[2];
     out[9] = rms[0];  out[10] = rms[1]; out[11] = rms[2];
     out[12] = res;
+}
+
+// Quantise the float features to the int16 domain the model was trained in.
+//
+// emlearn's tree runtime is fixed-point: the split thresholds live in an
+// int16_t field and inference is integer compares only — no FPU needed. The
+// model therefore expects INTEGERS in the units train_rf.py trained on, and
+// `scale` must be the array generated alongside the model (feature_scale.h).
+// Get this wrong and nothing crashes: every decision boundary just moves, and
+// the board reports plausible-looking nonsense.
+//
+// MUST match quantise() in train_rf.py bit-for-bit:
+//   clamp, then round HALF AWAY FROM ZERO (not C's truncating cast, and not
+//   numpy's default round-half-to-even).
+static void quantise_features(const float *f, const float *scale, int16_t *q) {
+    for (int i = 0; i < N_FEATURES; i++) {
+        float v = f[i] * scale[i];
+        if (v > 32767.0f) v = 32767.0f;
+        if (v < -32768.0f) v = -32768.0f;
+        q[i] = (int16_t)(v >= 0.0f ? (v + 0.5f) : (v - 0.5f));
+    }
 }
