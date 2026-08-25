@@ -4,11 +4,17 @@ Module 7.1 - Train a Random Forest on fan vibration features and convert to C.
 
 Input : data/raw/<label>.<index>.csv  with columns timestamp,x,y,z
         (convert an Edge Impulse JSON export with ../ei_json_to_csv.py)
-Output: platformio/src/fan_model.h     (emlearn-converted model)
-        platformio/src/test_windows.h  (one golden raw window per class + expected label)
+Output: platformio/src/fan_model.h      (emlearn-converted model)
+        platformio/src/feature_scale.h  (the int16 quantisation the model expects)
+        platformio/src/test_windows.h   (one golden raw window per class + expected label)
 
---print-features prints the 13 feature names + values for every golden
-window, for diffing against the device's feature output.
+--print-features prints the 13 feature names + float values + quantised int16
+values for every golden window, for diffing against the device's output.
+
+emlearn's tree runtime is FIXED-POINT: EmlTreesNode.value is an int16_t (see
+lib/emlearn/eml_trees.h), and the generated predict() takes `const int16_t *`.
+So the features are quantised to int16 BEFORE training, and the firmware applies
+the identical per-feature scale — see quantise() and choose_scales() below.
 
 The 13 features computed here MUST stay in sync with platformio/src/features.h:
   std, MAD, kurtosis, RMS per axis (x,y,z) + mean resultant magnitude.
@@ -18,6 +24,7 @@ will NOT match the C code bit-for-bit -- we deliberately avoid it here.)
 """
 
 import argparse
+import copy
 import glob
 import os
 
@@ -40,6 +47,22 @@ OUT_DIR = os.path.join(os.path.dirname(__file__), "platformio", "src")
 FEATURE_NAMES = ([f"std_{a}" for a in "xyz"] + [f"mad_{a}" for a in "xyz"]
                  + [f"kurt_{a}" for a in "xyz"] + [f"rms_{a}" for a in "xyz"]
                  + ["res_mean"])
+
+# --- int16 quantisation (see the module docstring) ----------------------------
+# The 13 features live on wildly different scales: std/MAD ~0.03..2, kurtosis
+# -1.5..45, RMS and the resultant ~0.1..10 (m/s^2). A single global scale would
+# either crush the small features to 0 or overflow the large ones, so each
+# feature gets its OWN scale factor, chosen so the largest value seen in
+# TRAINING lands near Q_TARGET. int16 tops out at 32767, so that leaves ~4x
+# headroom for live values above anything in the dataset; beyond that we clamp,
+# which is harmless (clamping preserves ordering, so a clamped value still takes
+# the same branch as the largest training value).
+#
+# The scales are POWERS OF TWO on purpose: they are exact in float32, so Python
+# here and C on the device compute bit-identical products, and no threshold can
+# drift because of a rounding difference between the two implementations.
+Q_TARGET = 8192          # 2^13 — target for max|feature| after scaling
+Q_MIN, Q_MAX = -32768, 32767
 
 
 def kurtosis_biased(x):
@@ -70,6 +93,57 @@ def extract_features(win):
     resultant = np.sqrt(np.sum(win**2, axis=1))
     feats.append(np.mean(resultant))                             # mean resultant
     return np.array(feats, dtype=np.float32)
+
+
+def choose_scales(X_train):
+    """Per-feature power-of-two scale factor, from the TRAINING split only.
+
+    Training-split-only is the same discipline as any other fitted preprocessing
+    step (Modules 4-5): deriving the scale from the test windows too would let
+    held-out data influence the deployed model, however mildly.
+    """
+    maxabs = np.abs(np.asarray(X_train, dtype=np.float64)).max(axis=0)
+    maxabs = np.where(maxabs > 0.0, maxabs, 1.0)          # all-zero feature -> scale 1
+    exponent = np.floor(np.log2(Q_TARGET / maxabs))
+    exponent = np.clip(exponent, -8, 15)                  # keep the scale sane either way
+    return (2.0 ** exponent).astype(np.float32)
+
+
+def quantise(feats, scale):
+    """Float features -> int16, EXACTLY as platformio/src/features.h does.
+
+    float32 throughout, clamp, then round half away from zero (C's
+    `(int16_t)(v + 0.5f)` for positives, `(v - 0.5f)` for negatives) — numpy's
+    default round-half-to-even would disagree with the firmware on ties.
+    """
+    v = np.asarray(feats, dtype=np.float32) * np.asarray(scale, dtype=np.float32)
+    v = np.clip(v, np.float32(Q_MIN), np.float32(Q_MAX))
+    return (np.floor(np.abs(v) + np.float32(0.5)) * np.sign(v)).astype(np.int16)
+
+
+def align_thresholds_for_int_features(clf):
+    """Make emlearn's integer comparison mean exactly what sklearn's meant.
+
+    sklearn sends a sample LEFT when `x <= threshold`; emlearn's runtime sends it
+    left when `x < node.value`, and emlearn writes that node value with `int(t)`
+    — i.e. TRUNCATED. With integer features, `x <= t` is `x < floor(t) + 1`, so a
+    threshold of 1234.5 must reach the C header as 1235, not 1234. Truncation
+    would misroute exactly those samples whose feature equals floor(t): rare, but
+    a silent, data-dependent disagreement between the model you measured in
+    Python and the one you flashed.
+
+    Returns a COPY with thresholds rewritten; the original stays untouched so the
+    accuracy printed above still refers to the model we actually deploy (the two
+    are equivalent by construction — that is the point).
+    """
+    fixed = copy.deepcopy(clf)
+    for est in fixed.estimators_:
+        tree = est.tree_
+        inner = tree.children_left != -1              # leaves carry a sentinel threshold
+        th = tree.threshold.copy()
+        th[inner] = np.floor(th[inner]) + 1.0
+        tree.threshold[:] = th
+    return fixed
 
 
 def load_windows(data_dir):
@@ -125,13 +199,28 @@ def main():
     # Needs >= 2 recordings per class so every class can land in the test set.
     gss = GroupShuffleSplit(n_splits=1, test_size=0.25, random_state=42)
     tr_idx, te_idx = next(gss.split(X, y_int, groups=groups))
-    Xtr, Xte = X[tr_idx], X[te_idx]
     ytr, yte = y_int[tr_idx], y_int[te_idx]
     rte = X_raw[te_idx]
 
-    print(f"Files: {n_files}   Windows: train {len(Xtr)} / test {len(Xte)}  "
+    print(f"Files: {n_files}   Windows: train {len(tr_idx)} / test {len(te_idx)}  "
           "(split by recording, not by window)")
     print(f"Label order (class index in C): {labels}")
+
+    # --- Quantise to int16 ----------------------------------------------------
+    # The model is trained on the integers the DEVICE will feed it, not on the
+    # floats — so what we measure below is what runs on the board.
+    scale = choose_scales(X[tr_idx])
+    Xq = quantise(X, scale)
+    Xtr, Xte = Xq[tr_idx], Xq[te_idx]
+    print("Feature quantisation (train max -> int16):")
+    for i, name in enumerate(FEATURE_NAMES):
+        fmax = np.abs(X[tr_idx][:, i]).max()
+        print(f"  {name:10s} x{scale[i]:<9g} max|f|={fmax:9.4f} -> "
+              f"q in [{Xtr[:, i].min():6d}, {Xtr[:, i].max():6d}]")
+    n_clamped = int(np.sum((np.abs(X * scale) > Q_MAX)))
+    if n_clamped:
+        print(f"  ({n_clamped} feature values clamped to +/-{Q_MAX} — expected for "
+              "outliers above the training range, harmless)")
 
     clf = RandomForestClassifier(n_estimators=10, max_depth=8, random_state=42)
     clf.fit(Xtr, ytr)
@@ -145,11 +234,66 @@ def main():
         print(f"  {n:10s} {imp:.3f}")
 
     # --- Convert to C ---------------------------------------------------------
+    # Call convert() WITHOUT dtype=: the tree runtime is int16 and emlearn's
+    # dtype overrides are broken in 0.21 and 0.23 alike — dtype='float' emits
+    # float literals into the int16_t node table ("narrowing conversion", the
+    # firmware build fails), and dtype='int16' emits `const int16 *features`,
+    # which is not a C type. Same trap as Module 6; the default path is correct.
     os.makedirs(OUT_DIR, exist_ok=True)
-    cmodel = emlearn.convert(clf, method="inline")   # dtype='float'; ints in Module 9
+    deployed = align_thresholds_for_int_features(clf)
+    cmodel = emlearn.convert(deployed, method="inline")
     model_path = os.path.join(OUT_DIR, "fan_model.h")
     cmodel.save(file=model_path, name="fan_model")
     print(f"Wrote {model_path}")
+
+    # --- The scale factors the firmware must apply ----------------------------
+    scale_lines = [
+        "// AUTO-GENERATED by train_rf.py - do not edit.",
+        "// Per-feature int16 quantisation for fan_model.h. Regenerated WITH the",
+        "// model: a stale copy silently moves every split threshold.",
+        "#pragma once",
+        "",
+        f"#define FEATURE_Q_MIN ({Q_MIN})",
+        f"#define FEATURE_Q_MAX ({Q_MAX})",
+        "",
+        "// feature_scale[i] = the power of two feature i was multiplied by before",
+        "// training. Order matches features.h / FEATURE_NAMES.",
+        "static const float feature_scale[13] = {",
+    ]
+    for i, name in enumerate(FEATURE_NAMES):
+        fmax = np.abs(X[tr_idx][:, i]).max()
+        scale_lines.append(f"    {scale[i]:>9.1f}f,   // [{i:2d}] {name:10s} "
+                           f"train max|f| = {fmax:8.4f}")
+    scale_lines.append("};")
+    scale_path = os.path.join(OUT_DIR, "feature_scale.h")
+    with open(scale_path, "w") as f:
+        f.write("\n".join(scale_lines) + "\n")
+    print(f"Wrote {scale_path}")
+
+    # --- Does the generated C agree with sklearn? -----------------------------
+    # emlearn compiles and runs the header it just wrote, so this compares the
+    # ACTUAL C model against the Python one on every window. It needs a host C
+    # compiler; without one, the golden-window tests (host_test.c / on-device)
+    # still cover the same ground on 5 windows.
+    #
+    # align_thresholds_for_int_features() above makes the ROUTING identical.
+    # Aggregation is not guaranteed identical: sklearn averages the trees' class
+    # probabilities, emlearn's runtime takes a majority vote of their hard
+    # labels. At max_depth=8 the leaves are near-pure so the two coincide — but
+    # that is a property of this forest, not a promise, which is why we check
+    # every window instead of trusting the conversion.
+    try:
+        em_pred = np.asarray(cmodel.predict(Xq))
+    except Exception as exc:
+        print(f"\nSkipped C-vs-Python check (no compiler for emlearn?): {exc}")
+    else:
+        disagree = int(np.sum(em_pred != clf.predict(Xq)))
+        print(f"\nC-vs-Python check: {len(Xq) - disagree}/{len(Xq)} windows agree")
+        if disagree:
+            raise SystemExit(
+                f"FAIL: the generated C model disagrees with sklearn on {disagree} "
+                "windows — do not flash this. Check that quantise() here and "
+                "quantise_features() in features.h still match.")
 
     # --- Golden test vectors: one test-set window per class -------------------
     lines = [
@@ -181,23 +325,27 @@ def main():
         f.write("\n".join(lines) + "\n")
     print(f"Wrote {tw_path}")
 
-    # Sanity: model prediction on the golden feature vectors
+    # Sanity: model prediction on the golden feature vectors (quantised, as on
+    # the device). These are the same 5 windows host_test.c and the firmware run.
     for name, ci in tw_names:
         w = rte[np.where(yte == ci)[0][0]]
-        p = clf.predict(extract_features(w).reshape(1, -1))[0]
+        q = quantise(extract_features(w), scale)
+        p = clf.predict(q.reshape(1, -1))[0]
         flag = "OK " if p == ci else "MISMATCH"
         print(f"  golden '{labels[ci]}' -> predicted '{labels[p]}' {flag}")
 
     # --print-features: the reference values to diff against the device when
-    # the static tests FAIL (see README troubleshooting).
+    # the static tests FAIL (see README troubleshooting). Both columns matter —
+    # a float match with an int mismatch means the scales are out of sync.
     if args.print_features:
         print("\nGolden-window features (Python reference, float32 windows):")
         for name, ci in tw_names:
             w = rte[np.where(yte == ci)[0][0]]
             feats = extract_features(w)
+            q = quantise(feats, scale)
             print(f"  window '{labels[ci]}':")
-            for fname, val in zip(FEATURE_NAMES, feats):
-                print(f"    {fname:10s} {val:.6f}")
+            for fname, val, qv, s in zip(FEATURE_NAMES, feats, q, scale):
+                print(f"    {fname:10s} {val:12.6f}  x{s:<9g} -> {qv:6d}")
 
 
 if __name__ == "__main__":

@@ -74,6 +74,14 @@ exercises/module6-emlearn/xor-train/xor_model.h
 exercises/module6-emlearn/xor-train/xor_data.png
 exercises/module6-emlearn/xor-device/include/xor_model.h
 
+# --- Module 7: each participant's own fan recordings + what train_rf.py makes -
+# The CSVs are recorded on the Module 4 rig (and the .zip is the raw Edge
+# Impulse export they came from); fan_model.h / feature_scale.h /
+# test_windows.h are that data turned into C — generating them is the exercise.
+exercises/module7-models/*.zip
+exercises/module7-models/rf-features/data/
+exercises/module7-models/rf-features/tmp/
+
 # --- Editor / OS junk -------------------------------------------------------
 .DS_Store
 .vscode/
