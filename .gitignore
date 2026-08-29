@@ -48,7 +48,9 @@ env/
 *.egg-info/
 
 # --- Notebook / model / captured-data artifacts (regenerated in labs) -------
+# (Exercise 1.3 saves mnist_dense.keras so it can be opened in Netron.)
 *.h5
+*.keras
 *.tflite
 *.pkl
 *.npy

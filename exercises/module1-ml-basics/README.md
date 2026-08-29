@@ -17,7 +17,7 @@ Every exercise has a notebook in this folder — start from these:
 | `Exercise 1.2.ipynb` | California housing MLP — fill in the `TODO`s |
 | `Exercise 1.3.ipynb` | MNIST dense classifier — fill in the `TODO`s |
 | `Exercise 1.4.ipynb` | CIFAR-10 CNN teaser (optional) — fill in the `TODO`s |
-| `Exercise1.1 solution.ipynb` / `Exercise 1.2 solution.ipynb` | the worked answers, with outputs — look *after* you have had a go |
+| `Exercise1.1 solution.ipynb` … `Exercise 1.4 solution.ipynb` | the worked answers, with outputs and short written answers to the discussion questions — look *after* you have had a go |
 
 Exercises 1.3 and 1.4 also link to the original ready-made Colabs if you would rather
 follow a walkthrough than fill in blanks.
@@ -125,7 +125,7 @@ Contrast this with Exercise 1.2: there, humans engineered the features (rooms, i
 4. Generate the confusion matrix cell. Which digit pairs get confused? Do the mistakes look human?
 5. Download the trained `.h5` model file and open it in [Netron](https://netron.app/) — inspect layers, shapes, and parameter counts.
 
-**Expected output:** test accuracy ≈ **97–98%** after a few epochs. LR ×10: loss jumps around or explodes. LR ÷100: loss decreases painfully slowly.
+**Expected output:** test accuracy ≈ **96–97%** after 10 epochs with the 20-unit hidden layer in the notebook (widen it to `Dense(128)` for the 97–98% the textbooks quote). LR ×10: loss jumps around or explodes. LR ÷100: loss decreases painfully slowly.
 
 ### Observe & discuss
 
@@ -166,7 +166,7 @@ CIFAR-10: 60,000 **colour** images, 32×32 px, 10 classes (airplane, car, bird, 
 | Colab session reset, lost variables | Runtime → Run all — notebooks are built to re-run top to bottom |
 | Local: `No module named tensorflow` | activate the env: `source ~/tinyml-env/bin/activate`; TF missing? `pip install tensorflow` |
 | Local: TF install too heavy / fails | just use Colab — that's why it's the default here |
-| `fetch_california_housing` fails with `CERTIFICATE_VERIFY_FAILED` | macOS python.org build has no default CA bundle. The notebook's cert-fix cell (points Python at `certifi`) handles it; if running your own script, either run **`/Applications/Python 3.11/Install Certificates.command`** once, or `export SSL_CERT_FILE=$(python -c "import certifi;print(certifi.where())")`. |
+| `CERTIFICATE_VERIFY_FAILED` on any dataset download (`fetch_california_housing`, `mnist.load_data`, `cifar10.load_data`) | macOS python.org build has no default CA bundle. The notebook's cert-fix cell (points Python at `certifi`) handles it; if running your own script, either run **`/Applications/Python 3.11/Install Certificates.command`** once, or `export SSL_CERT_FILE=$(python -c "import certifi;print(certifi.where())")`. |
 | `fetch_california_housing` download error (other) | corporate proxy/firewall — run that exercise in Colab |
 | Training absurdly slow on CIFAR | enable the GPU runtime (see Exercise 1.4), or reduce epochs |
 | External Colab link dead (UNIFEI repo) | use `Exercise 1.3.ipynb` / `Exercise 1.4.ipynb` in this folder — they cover the same ground without the external dependency |
