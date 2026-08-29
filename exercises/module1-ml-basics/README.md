@@ -9,6 +9,16 @@ Four exercises, in order. Everything runs in **Google Colab** (zero install, nee
 | 3 | MNIST — dense NN classifier | Keras | 25 min |
 | 4 | CIFAR-10 — CNN teaser (optional) | Keras | 20 min |
 
+Exercises 1 and 2 have notebooks in this folder — start from these:
+
+| Notebook | Use |
+|---|---|
+| `Exercise 1.1.ipynb` | accelerometer/pandas warm-up — fill in the `TODO`s |
+| `Exercise 1.2.ipynb` | California housing MLP — fill in the `TODO`s |
+| `Exercise1.1 solution.ipynb` / `Exercise 1.2 solution.ipynb` | the worked answers, with outputs — look *after* you have had a go |
+
+Exercises 3 and 4 run from the external Colabs linked below.
+
 ---
 
 ## Exercise 1 — Introduction to pandas
@@ -28,7 +38,7 @@ The two structures to know:
 
 ### Work with real accelerometer data
 
-In Module 3 you will record your own CSVs — bookmark this section and repeat it then. For now, grab any 3-axis accelerometer CSV (ask the instructor for a sample with columns `timestamp,accX,accY,accZ`) and:
+Open **`Exercise 1.1.ipynb`** and work through it. In Module 3 you will record your own CSVs — bookmark this section and repeat it then. For now use the recordings in this folder (`circle.2.csv` = a circular gesture, `idle.00002.csv` = sensor at rest; both have columns `timestamp,accX,accY,accZ`) and:
 
 1. Load it: `df = pd.read_csv("circle.1.csv")`
 2. Run `df.describe()` —
@@ -53,7 +63,7 @@ First contact with Keras: a two-layer Multi-Layer Perceptron predicting house pr
 
 ### Steps
 
-1. Open a fresh Colab/Jupyter notebook and build the model yourself (this is deliberate — it's ~20 lines):
+1. Open **`Exercise 1.2.ipynb`** and build the model yourself (this is deliberate — it's ~20 lines). The reference code:
 
    ```python
    from sklearn.datasets import fetch_california_housing
