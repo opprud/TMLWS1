@@ -1,17 +1,30 @@
 # Module 1 Lab — ML Basics in Jupyter/Colab
 
-Four exercises, in order. Everything runs in **Google Colab** (zero install, needs a Google account) or locally in Jupyter using the `tinyml-env` from the [setup guide](../../setup-guide.md). Budget ~90 min; exercise 4 is optional if time runs short.
+Four exercises, in order. Everything runs in **Google Colab** (zero install, needs a Google account) or locally in Jupyter using the `tinyml-env` from the [setup guide](../../setup-guide.md). Budget ~90 min; exercise 1.4 is optional if time runs short.
 
 | # | Exercise | Tool | ~Time |
 |---|---|---|---|
-| 1 | Pandas warm-up | pandas/matplotlib | 20 min |
-| 2 | House prices — Keras MLP regression | Keras | 25 min |
-| 3 | MNIST — dense NN classifier | Keras | 25 min |
-| 4 | CIFAR-10 — CNN teaser (optional) | Keras | 20 min |
+| 1.1 | Pandas warm-up | pandas/matplotlib | 20 min |
+| 1.2 | House prices — Keras MLP regression | Keras | 25 min |
+| 1.3 | MNIST — dense NN classifier | Keras | 25 min |
+| 1.4 | CIFAR-10 — CNN teaser (optional) | Keras | 20 min |
+
+Every exercise has a notebook in this folder — start from these:
+
+| Notebook | Use |
+|---|---|
+| `Exercise 1.1.ipynb` | accelerometer/pandas warm-up — fill in the `TODO`s |
+| `Exercise 1.2.ipynb` | California housing MLP — fill in the `TODO`s |
+| `Exercise 1.3.ipynb` | MNIST dense classifier — fill in the `TODO`s |
+| `Exercise 1.4.ipynb` | CIFAR-10 CNN teaser (optional) — fill in the `TODO`s |
+| `Exercise1.1 solution.ipynb` … `Exercise 1.4 solution.ipynb` | the worked answers, with outputs and short written answers to the discussion questions — look *after* you have had a go |
+
+Exercises 1.3 and 1.4 also link to the original ready-made Colabs if you would rather
+follow a walkthrough than fill in blanks.
 
 ---
 
-## Exercise 1 — Introduction to pandas
+## Exercise 1.1 — Introduction to pandas
 
 Pandas is the Python library for tabular data — DataFrames are spreadsheets you can program. You will use it constantly in this course: every sensor recording you make ends up in a DataFrame for sanity-checking before it goes near a model.
 
@@ -28,7 +41,7 @@ The two structures to know:
 
 ### Work with real accelerometer data
 
-In Module 3 you will record your own CSVs — bookmark this section and repeat it then. For now, grab any 3-axis accelerometer CSV (ask the instructor for a sample with columns `timestamp,accX,accY,accZ`) and:
+Open **`Exercise 1.1.ipynb`** and work through it. In Module 3 you will record your own CSVs — bookmark this section and repeat it then. For now use the recordings in this folder (`circle.2.csv` = a circular gesture, `idle.00002.csv` = sensor at rest; both have columns `timestamp,accX,accY,accZ`) and:
 
 1. Load it: `df = pd.read_csv("circle.1.csv")`
 2. Run `df.describe()` —
@@ -45,7 +58,7 @@ In Module 3 you will record your own CSVs — bookmark this section and repeat i
 
 ---
 
-## Exercise 2 — Predict house prices (Keras MLP regression)
+## Exercise 1.2 — Predict house prices (Keras MLP regression)
 
 First contact with Keras: a two-layer Multi-Layer Perceptron predicting house prices from tabular features. We jump straight in *before* discussing hyperparameters in depth — the goal is to see the workflow end to end.
 
@@ -53,7 +66,7 @@ First contact with Keras: a two-layer Multi-Layer Perceptron predicting house pr
 
 ### Steps
 
-1. Open a fresh Colab/Jupyter notebook and build the model yourself (this is deliberate — it's ~20 lines):
+1. Open **`Exercise 1.2.ipynb`** and build the model yourself (this is deliberate — it's ~20 lines). The reference code:
 
    ```python
    from sklearn.datasets import fetch_california_housing
@@ -95,24 +108,24 @@ First contact with Keras: a two-layer Multi-Layer Perceptron predicting house pr
 
 ---
 
-## Exercise 3 — Predict handwritten digits (MNIST, dense NN)
+## Exercise 1.3 — Predict handwritten digits (MNIST, dense NN)
 
 Build a classifier that recognises handwritten digits — 28×28-pixel grayscale images, 10 classes. The compute needed to *run* this model is well within reach of the microcontroller in your kit.
 
 **MNIST facts:** 70,000 images (60k train / 10k test) of digits written by many different people; the "Hello World" benchmark of image classification. The model here is a two-layer dense network with ~16k parameters.
 
-Contrast this with Exercise 2: there, humans engineered the features (rooms, income, …). Here the input is **raw pixels** — all the reasoning about content is left to the network. No human intuition used. Remember this trade-off; it returns on Day 2 when we choose between hand-crafted features and raw-signal models on the fan.
+Contrast this with Exercise 1.2: there, humans engineered the features (rooms, income, …). Here the input is **raw pixels** — all the reasoning about content is left to the network. No human intuition used. Remember this trade-off; it returns on Day 2 when we choose between hand-crafted features and raw-signal models on the fan.
 
 ### Steps
 
-1. Run the Colab: [TF_MNIST_Classification_v2.ipynb (UNIFEI-IESTI01)](https://colab.research.google.com/github/Mjrovai/UNIFEI-IESTI01-TinyML-2022.1/blob/main/00_Curse_Folder/1_Fundamentals/Class_09/TF_MNIST_Classification_v2.ipynb)
-   *(or download it and run locally: File → Download → Download .ipynb)*
+1. Open **`Exercise 1.3.ipynb`** and work through it.
+   *(Prefer a ready-made walkthrough? Run the original Colab instead: [TF_MNIST_Classification_v2.ipynb (UNIFEI-IESTI01)](https://colab.research.google.com/github/Mjrovai/UNIFEI-IESTI01-TinyML-2022.1/blob/main/00_Curse_Folder/1_Fundamentals/Class_09/TF_MNIST_Classification_v2.ipynb) — or download it and run locally: File → Download → Download .ipynb)*
 2. Train the model as given; note the test accuracy.
 3. **Break it on purpose:** re-train with the learning rate ×10, then ÷100. Watch the loss curves.
 4. Generate the confusion matrix cell. Which digit pairs get confused? Do the mistakes look human?
 5. Download the trained `.h5` model file and open it in [Netron](https://netron.app/) — inspect layers, shapes, and parameter counts.
 
-**Expected output:** test accuracy ≈ **97–98%** after a few epochs. LR ×10: loss jumps around or explodes. LR ÷100: loss decreases painfully slowly.
+**Expected output:** test accuracy ≈ **96–97%** after 10 epochs with the 20-unit hidden layer in the notebook (widen it to `Dense(128)` for the 97–98% the textbooks quote). LR ×10: loss jumps around or explodes. LR ÷100: loss decreases painfully slowly.
 
 ### Observe & discuss
 
@@ -122,13 +135,14 @@ Contrast this with Exercise 2: there, humans engineered the features (rooms, inc
 
 ---
 
-## Exercise 4 — Classify photos with a CNN (CIFAR-10) *(optional teaser)*
+## Exercise 1.4 — Classify photos with a CNN (CIFAR-10) *(optional teaser)*
 
 CIFAR-10: 60,000 **colour** images, 32×32 px, 10 classes (airplane, car, bird, cat, …). Harder than MNIST: colour channels, varied backgrounds, real objects. Dense layers alone struggle here — this is where **convolutional** layers earn their keep by exploiting spatial structure with far fewer parameters.
 
 ### Steps
 
-1. Run the Colab: [CNN_Cifar_10.ipynb (UNIFEI-IESTI01)](https://colab.research.google.com/github/Mjrovai/UNIFEI-IESTI01-TinyML-2022.1/blob/main/00_Curse_Folder/1_Fundamentals/Class_11/CNN_Cifar_10.ipynb)
+1. Open **`Exercise 1.4.ipynb`** and work through it.
+   *(Or run the original Colab: [CNN_Cifar_10.ipynb (UNIFEI-IESTI01)](https://colab.research.google.com/github/Mjrovai/UNIFEI-IESTI01-TinyML-2022.1/blob/main/00_Curse_Folder/1_Fundamentals/Class_11/CNN_Cifar_10.ipynb))*
 2. Train for a handful of epochs (full training takes a while — Colab GPU runtime recommended: Runtime → Change runtime type → GPU).
 
 ### Observe & discuss
@@ -152,7 +166,7 @@ CIFAR-10: 60,000 **colour** images, 32×32 px, 10 classes (airplane, car, bird, 
 | Colab session reset, lost variables | Runtime → Run all — notebooks are built to re-run top to bottom |
 | Local: `No module named tensorflow` | activate the env: `source ~/tinyml-env/bin/activate`; TF missing? `pip install tensorflow` |
 | Local: TF install too heavy / fails | just use Colab — that's why it's the default here |
-| `fetch_california_housing` fails with `CERTIFICATE_VERIFY_FAILED` | macOS python.org build has no default CA bundle. The notebook's cert-fix cell (points Python at `certifi`) handles it; if running your own script, either run **`/Applications/Python 3.11/Install Certificates.command`** once, or `export SSL_CERT_FILE=$(python -c "import certifi;print(certifi.where())")`. |
+| `CERTIFICATE_VERIFY_FAILED` on any dataset download (`fetch_california_housing`, `mnist.load_data`, `cifar10.load_data`) | macOS python.org build has no default CA bundle. The notebook's cert-fix cell (points Python at `certifi`) handles it; if running your own script, either run **`/Applications/Python 3.11/Install Certificates.command`** once, or `export SSL_CERT_FILE=$(python -c "import certifi;print(certifi.where())")`. |
 | `fetch_california_housing` download error (other) | corporate proxy/firewall — run that exercise in Colab |
-| Training absurdly slow on CIFAR | enable the GPU runtime (see Exercise 4), or reduce epochs |
-| External Colab link dead (UNIFEI repo) | mirrored copies: ask instructor / check the course repo `notebooks/` folder |
+| Training absurdly slow on CIFAR | enable the GPU runtime (see Exercise 1.4), or reduce epochs |
+| External Colab link dead (UNIFEI repo) | use `Exercise 1.3.ipynb` / `Exercise 1.4.ipynb` in this folder — they cover the same ground without the external dependency |
