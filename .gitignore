@@ -81,6 +81,10 @@ exercises/module6-emlearn/xor-train/xor_model.h
 exercises/module6-emlearn/xor-train/xor_data.png
 exercises/module6-emlearn/xor-device/include/xor_model.h
 
+# --- Module 6 device-side scratch (emlearn's C compile products, plots) -------
+exercises/module6-emlearn/xor-device/tmp/
+exercises/module6-emlearn/xor-device/xor_data.png
+
 # --- Module 7: each participant's own fan recordings + what train_rf.py makes -
 # The CSVs are recorded on the Module 4 rig (and the .zip is the raw Edge
 # Impulse export they came from); fan_model.h / feature_scale.h /
@@ -89,9 +93,18 @@ exercises/module7-models/*.zip
 exercises/module7-models/rf-features/data/
 exercises/module7-models/rf-features/tmp/
 
+# --- Module 9: emlearn_dtype_compare.py writes one header per dtype ----------
+exercises/module9-optimisation/out_dtypes/
+
 # --- Editor / OS junk -------------------------------------------------------
 .DS_Store
 .vscode/
 .idea/
 *.swp
 Thumbs.db
+
+# VS Code multi-root workspaces point at absolute paths on one machine.
+*.code-workspace
+
+# Finder duplicates ("foo copy.ipynb") — an accident, never a deliverable.
+* copy.*
