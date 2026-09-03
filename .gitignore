@@ -19,12 +19,17 @@
 /reddi-slides.zip
 /reddi-index.tsv
 /.reddi-tmp/
-decks/assets/reddi/
 
 # --- Old Brightspace / Particle-era source export (not for distribution) ---
 /brightspace-export/
 
-# --- Rendered slide binaries (rebuildable from Marp sources) ----------------
+# --- Deck build inputs and intermediates ------------------------------------
+# GitHub carries the Marp sources (decks/*.md) and the rendered PDFs
+# (decks/pdf/). The figures and the theme stay on the instructor's disk —
+# they are only needed to re-render, and decks/assets/reddi/ is permission-
+# bound material that must never be published.
+decks/assets/
+decks/themes/
 decks/rendered/
 *.pptx
 

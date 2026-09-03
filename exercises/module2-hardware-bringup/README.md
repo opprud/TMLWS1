@@ -121,12 +121,14 @@ The **callback-drain pattern** in `onPDMdata()` (read the finished block out of 
 |---|---|
 | Build: `Error: Unknown board ID 'wiscore_rak4631'` | RAK patch not applied — setup guide §2; re-run `rak_patch.py`, restart VS Code |
 | Upload: timeout / port not found | **Double-press RESET** → green LED breathes + `RAK4631` drive appears → upload again |
+| Issues building and uploading pio project| Ensure you are in the correct platform io project folder, and not the `project` directory above|
 | Upload works, monitor shows nothing | wrong baud (use 115200); or reopen the monitor — USB re-enumerates after every flash |
 | `Failed to find LIS3DH` / ERROR at 0x18 | module not seated / wrong slot (must be **A**) / `WB_IO2` line removed from the sketch |
 | Accel values frozen | you're reading before the data rate ticks — or the module isn't screwed down and lost contact |
 | Mic: build error mentioning `nrfx_pdm` / `NRFX_PDM_DEFAULT_CONFIG_IRQ_PRIORITY` | old code used the unshipped nrfx driver — use the `PDM` library (`#include <PDM.h>`, `PDM.begin(1, 16000)`) as in `mic-level/` |
 | Mic: RMS is always 0 | DATA/CLK swapped — the call must be `PDM.setPins(WB_IO3 /*data*/, WB_IO4 /*clk*/, -1)` |
 | Mic: constant huge RMS | mic module not seated; or gain cranked with the monitor's fan next to it (yes, really) |
-| Everything broken on one laptop | borrow a neighbour's board to bisect: board vs laptop. Flag the instructor early. |
+| Tiny USB won't link during compile | include <Adafruit_TinyUSB.h> or <Wire.h> in your main project |
+
 
 **Done early?** Combine 2 + 3: print accel magnitude *and* mic RMS on one line. You've just built the sensor front-end of a condition-monitoring node — Module 3 gives its data somewhere to go.
