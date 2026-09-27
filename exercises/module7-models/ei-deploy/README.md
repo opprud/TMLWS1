@@ -80,7 +80,7 @@ void setup() {
     while (!Serial && millis() < 5000) {}
     if (!lis.begin(0x18)) { Serial.println("LIS3DH not found"); while (1) delay(100); }
     lis.setRange(LIS3DH_RANGE_4_G);
-    lis.setDataRate(LIS3DH_DATARATE_100_HZ);
+    lis.setDataRate(LIS3DH_DATARATE_400_HZ);
     Serial.println("EI fan classifier ready");
 }
 
