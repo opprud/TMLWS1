@@ -77,6 +77,8 @@ pip install "emlearn==0.23.*"           # PINNED — see below
 - `tensorflow` is only needed for Keras notebooks (Modules 1, 7, 8); skip if disk-constrained and use Google Colab instead.
 - Test: `jupyter lab` opens in your browser; `python -c "import emlearn; print(emlearn.__version__)"` prints `0.23.2`.
 
+ALternatively you may use google colab to run notebooks https://colab.research.google.com/ (requires google acount), remeber to download `csv` files for the experiments
+
 ## 5. Serial terminal (optional but handy)
 
 Any of: PlatformIO's built-in monitor, `screen`, PuTTY, or the [Serial Studio](https://serial-studio.github.io/) plotter for visualising live sensor data.
